@@ -1,8 +1,8 @@
 name: nightly run
 
 # Runs the whole project against Shippo's live test API once a day, so the numbers in the README are
-# reproducible from this repository. Skips when the repository has no token. Nothing is uploaded: raw
-# responses in _output/ can hold account details, so the log is the record.
+# reproducible from this repository. Skips when the repository has no token. Each run's archives are
+# uploaded, so what the API actually said can be opened with `aat web`.
 on:
   schedule:
     - cron: "17 6 * * *"
@@ -35,3 +35,31 @@ jobs:
         env:
           SHIPPO_API_TOKEN: ${{ secrets.SHIPPO_API_TOKEN }}
         run: aat run batch --env test-ci
+
+      - name: Say how to open the archives
+        if: always() && steps.token.outputs.present == 'true'
+        run: |
+          mkdir -p _output/runs
+          cat > _output/runs/HOW-TO-VIEW.md <<'EOF'
+          # The archives from this run
+
+          Every request and response of this batch, as AAT recorded it.
+
+          Unpack this artifact, then, with aat 0.2.0 or later on your PATH:
+
+              aat web --output .              # the whole batch in the browser
+              aat run show latest --output .  # the last run's steps, in the terminal
+
+          AAT redacts every credential it sent before writing an archive. Nothing Shippo
+          returns is a credential: `token`, `extended_token` and `servicelevel_token` are
+          carrier service identifiers such as `usps_priority`, not secrets.
+          EOF
+
+      # A failed run is when these are worth opening most, so they upload either way.
+      - name: Upload the run archives
+        if: always() && steps.token.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-archives
+          path: _output/runs/
+          retention-days: 14
