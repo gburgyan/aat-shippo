@@ -607,11 +607,11 @@ that fail without it:
 
 | PR | What it was |
 |---|---|
-| [#28](https://github.com/gburgyan/aat/pull/28) | An `apikey` auth can write its own scheme — `Authorization: ShippoToken <key>` — without the scheme becoming part of the secret |
-| [#29](https://github.com/gburgyan/aat/pull/29) | A block key may end in `[]`. **`aat generate`'s own output failed `aat validate --strict`** for any spec with an array query parameter |
-| [#30](https://github.com/gburgyan/aat/pull/30) | The static OpenAPI check reads a `oneOf`/`anyOf` request body. The six bodies the generator declines to write were exactly the six that then warned |
-| [#31](https://github.com/gburgyan/aat/pull/31) | An input can be named for the project rather than the JSON body — form, query and path inputs already could |
-| [#32](https://github.com/gburgyan/aat/pull/32) | An input can name a property nested inside the request body, which a template routinely flattens into one input per leaf |
+| [#28](https://github.com/gburgyan/aat/commit/ffbdcddd4ae6) | An `apikey` auth can write its own scheme — `Authorization: ShippoToken <key>` — without the scheme becoming part of the secret |
+| [#29](https://github.com/gburgyan/aat/commit/4ae7950c1edc) | A block key may end in `[]`. **`aat generate`'s own output failed `aat validate --strict`** for any spec with an array query parameter |
+| [#30](https://github.com/gburgyan/aat/commit/36e250b78c8b) | The static OpenAPI check reads a `oneOf`/`anyOf` request body. The six bodies the generator declines to write were exactly the six that then warned |
+| [#31](https://github.com/gburgyan/aat/commit/28f2f26d047e) | An input can be named for the project rather than the JSON body — form, query and path inputs already could |
+| [#32](https://github.com/gburgyan/aat/commit/0ddef7b060fe) | An input can name a property nested inside the request body, which a template routinely flattens into one input per leaf |
 
 Three of the five were only findable this way. `aat generate` scaffolds a project from a spec, and on
 Shippo's spec its own output failed its own validator — nothing catches that but pointing the tool at a
