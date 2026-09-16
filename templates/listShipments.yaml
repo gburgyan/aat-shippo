@@ -1,0 +1,30 @@
+adapter: listShipments
+protocol: http
+
+request:
+  method: GET
+  path: /shipments?results={{pageSize}}{{?page}}&page={{page}}{{/page}}{{?createdGte}}&object_created_gte={{createdGte}}{{/createdGte}}
+
+response:
+  extract:
+    shipments:
+      path: results
+      fields:
+        shipmentId: object_id
+        status: status
+    count: 'results.#'
+  transform: |
+    local rows = json_path("results") or {}
+    local ours, live = 0, 0
+    for _, s in ipairs(rows) do
+      if type(s.metadata) == "string" and s.metadata:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+      if s.test == false then live = live + 1 end
+    end
+    outputs.ourCount = ours
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

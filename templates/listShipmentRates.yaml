@@ -1,0 +1,46 @@
+adapter: listShipmentRates
+protocol: http
+
+request:
+  method: GET
+  path: /shipments/{{shipmentId}}/rates?results={{pageSize}}{{?page}}&page={{page}}{{/page}}
+
+response:
+  extract:
+    rates:
+      path: results
+      fields:
+        rateId: object_id
+        provider: provider
+        amount: amount
+    count: 'results.#'
+  # Shippo marks the standouts in attributes rather than sorting, so the cheapest is read from
+  # there, not from the order. BESTVALUE is not always present.
+  transform: |
+    local rates = json_path("results") or {}
+    local seen, providers, withAttrs = {}, {}, 0
+    outputs.currency = ""
+    outputs.cheapestRateId = ""
+    outputs.cheapestProvider = ""
+    outputs.cheapestAmount = ""
+    outputs.fastestProvider = ""
+    for _, r in ipairs(rates) do
+      local p = tostring(r.provider)
+      if not seen[p] then seen[p] = true; table.insert(providers, p) end
+      if outputs.currency == "" then outputs.currency = tostring(r.currency) end
+      local attrs = r.attributes or {}
+      if #attrs > 0 then withAttrs = withAttrs + 1 end
+      for _, a in ipairs(attrs) do
+        if a == "CHEAPEST" then
+          outputs.cheapestRateId = tostring(r.object_id)
+          outputs.cheapestProvider = p
+          outputs.cheapestAmount = tostring(r.amount)
+        elseif a == "FASTEST" then
+          outputs.fastestProvider = p
+        end
+      end
+    end
+    table.sort(providers)
+    outputs.providers = table.concat(providers, ",") .. ""
+    outputs.attributeCount = withAttrs
+    return outputs

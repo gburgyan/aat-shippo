@@ -1,0 +1,32 @@
+adapter: getRate
+protocol: http
+
+request:
+  method: GET
+  path: /rates/{{rateId}}
+
+response:
+  extract:
+    rateId: object_id
+    provider: provider
+    serviceLevelName: servicelevel.name
+    serviceLevelToken: servicelevel.token
+    amount: amount
+    currency: currency
+    estimatedDays:
+      path: estimated_days
+      optional: true
+    zone:
+      path: zone
+      default: ""
+    shipmentId: shipment
+    carrierAccountId: carrier_account
+    providerImage: provider_image_75
+    test: test
+  transform: |
+    local attrs = json_path("attributes") or {}
+    local sorted = {}
+    for _, a in ipairs(attrs) do table.insert(sorted, tostring(a)) end
+    table.sort(sorted)
+    outputs.attributes = table.concat(sorted, ",") .. ""
+    return outputs

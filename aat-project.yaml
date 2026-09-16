@@ -8,6 +8,7 @@ graph: graph.yaml
 templates: templates/
 domain: domain.yaml
 plans: plans/
+visualizers: visualizers/
 # Shippo's published spec (docs.goshippo.com), vendored verbatim; see the README for its pin.
 oas: openapi/public-api.yaml
 environment: env.yaml

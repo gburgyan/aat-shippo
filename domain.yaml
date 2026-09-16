@@ -118,6 +118,45 @@ concepts:
       the rating plans that assert it arrive with the rating family.
     applies_to: [length, width, height, weight]
 
+  rating:
+    description: >-
+      Rating is a shipment, not a query: a from address, a to address, and parcel ids go in, and the
+      shipment comes back with its rates. Shippo documents rating as asynchronous — the shipment
+      carries a QUEUED / WAITING / SUCCESS / ERROR status for it — but in test mode every lane
+      probed answered SUCCESS with its rates already attached, so a poll settles on its first read.
+      Plans keep the poll because it is what the API asks for. Proven by plans/rating/rate-shop.yaml.
+    applies_to: [status, rateCount]
+    constraint: poll on status rather than assuming the rates are there
+
+  rateRefusals:
+    description: >-
+      A carrier that cannot serve a shipment does not fail the request. The shipment answers 201
+      with fewer rates and a `messages` array naming each carrier account and its reason — an
+      origin outside a master account's service area, a parcel outside a product's limits, an
+      account restriction, or the carrier's own rate limit. The rate count is therefore the
+      evidence, and a plan must not assert that a particular carrier answered unless it pins that
+      carrier by account. Proven by plans/rating/rate-shop.yaml; the reasons are catalogued in
+      docs/carrier-lane-coverage.md and shown by the rates visualizer.
+    applies_to: [messageCount, providers]
+    constraint: never assert a carrier is present unless the shipment pinned it
+
+  rateAttributes:
+    description: >-
+      Shippo marks the standouts in each rate's `attributes` rather than sorting the list: CHEAPEST,
+      FASTEST, and BESTVALUE. They are read from there, never from the order. BESTVALUE is not
+      always present. A rate also carries `provider_image_75` and `provider_image_200`, https URLs
+      to the carrier's logo, which the rates visualizer shows. Proven by plans/rating/rate-shop.yaml.
+    applies_to: [attributes, cheapestRateId, fastestProvider]
+
+  currencyConversion:
+    description: >-
+      GET /shipments/{id}/rates/{currency} answers the same rates with `amount_local` and
+      `currency_local` added in the currency asked for, keeping `amount` and `currency` as the
+      carrier quoted them — a US shipment's 63.94 USD reads 55.40 EUR beside it. Asking for the
+      currency it was already quoted in is not an error and converts every rate. Proven by
+      plans/rating/currencies.yaml.
+    applies_to: [currencyCode, currencyLocal, convertedCount]
+
   cleanupAndGuard:
     description: >-
       Almost nothing in Shippo can be deleted: addresses, parcels, shipments, customs objects,

@@ -1,0 +1,27 @@
+adapter: getShipment
+protocol: http
+
+request:
+  method: GET
+  path: /shipments/{{shipmentId}}
+
+response:
+  extract:
+    shipmentId: object_id
+    status: status
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  transform: |
+    local rates = json_path("rates") or {}
+    local seen, providers = {}, {}
+    for _, r in ipairs(rates) do
+      local p = tostring(r.provider)
+      if not seen[p] then seen[p] = true; table.insert(providers, p) end
+    end
+    table.sort(providers)
+    outputs.rateCount = #rates
+    outputs.providers = table.concat(providers, ",") .. ""
+    outputs.messageCount = #(json_path("messages") or {})
+    return outputs

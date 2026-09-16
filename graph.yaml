@@ -625,3 +625,302 @@ nodes:
       - name: nextPage
         type: integer
         optional: true
+
+  # --- Shipments and rating ---------------------------------------------------------------
+  createShipment:
+    description: >-
+      Create a shipment and rate it (POST /shipments, 201). It takes a from address, a to address,
+      and a list of parcel ids, each as an object id. Shippo documents rating as asynchronous and
+      gives the shipment a `status` of QUEUED, WAITING, SUCCESS, or ERROR for it, but in test mode
+      every lane probed answered SUCCESS with its rates already attached. A carrier that cannot serve
+      the shipment does not fail the request: it leaves a line in `messages` saying why, and the rate
+      simply is not there — so a rate count is the evidence, never an error. Shipments cannot be
+      deleted. Proven by plans/rating/rate-shop.yaml.
+    adapter: createShipment
+    tags: [shipments, rating]
+    oas:
+      operationId: CreateShipment
+    # A live token would rate a real shipment; stop at the first one.
+    errorDetection:
+      - path: test
+        rule: equals
+        value: false
+    inputs:
+      - name: addressFrom
+        type: string
+        default:
+          from: createAddress.addressId
+      - name: addressTo
+        type: string
+      - name: parcels
+        type: string[]
+        description: One or more parcel object ids
+      - name: async
+        type: boolean
+        optional: true
+        description: 'false rates before answering; Shippo''s default is true'
+      - name: shipmentDate
+        type: string
+        optional: true
+      - name: carrierAccounts
+        type: string[]
+        optional: true
+        description: Rate only these carrier accounts, by object id, instead of all of them
+      - name: customsDeclaration
+        type: string
+        optional: true
+        description: Required by some carriers on an international lane
+      - name: metadata
+        type: string
+        default: aat-shippo
+    outputs:
+      - name: shipmentId
+        type: string
+        display: Shipment
+      - name: status
+        type: string
+        description: QUEUED, WAITING, SUCCESS, or ERROR
+      - name: rateCount
+        type: integer
+        display: Rates
+      - name: providers
+        type: string
+        description: The carriers that answered, sorted and comma-joined
+      - name: messageCount
+        type: integer
+        description: Lines explaining why a carrier did not answer
+      - name: addressFrom
+        type: string
+      - name: addressTo
+        type: string
+      - name: parcelCount
+        type: integer
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  getShipment:
+    description: >-
+      Read a shipment by its object id (GET /shipments/{id}, 200), with whatever rating has produced
+      so far. This is what a poll reads while `status` is QUEUED or WAITING; in test mode it is
+      SUCCESS on the first read. Proven by plans/rating/rate-shop.yaml.
+    adapter: getShipment
+    tags: [shipments, rating]
+    oas:
+      operationId: GetShipment
+    inputs:
+      - name: shipmentId
+        type: string
+        default:
+          from: createShipment.shipmentId
+    outputs:
+      - name: shipmentId
+        type: string
+      - name: status
+        type: string
+        display: Status
+      - name: rateCount
+        type: integer
+      - name: providers
+        type: string
+      - name: messageCount
+        type: integer
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  listShipments:
+    description: >-
+      Page the account's shipments (GET /shipments, 200). One of only two operations whose spec
+      declares `object_created_gte`, the other being ListTransactions. Proven by
+      plans/rating/rate-shop.yaml.
+    adapter: listShipments
+    tags: [shipments, pagination]
+    oas:
+      operationId: ListShipments
+    inputs:
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 25
+        constraints:
+          min: 1
+          max: 100
+      - name: createdGte
+        type: string
+        optional: true
+        description: Only shipments created at or after this ISO 8601 UTC time
+    outputs:
+      - name: shipments
+        type: shipment[]
+        elementFields:
+          - name: shipmentId
+            type: string
+          - name: status
+            type: string
+      - name: count
+        type: integer
+        display: Shipments
+      - name: ourCount
+        type: integer
+        display: Ours
+      - name: liveCount
+        type: integer
+      - name: nextPage
+        type: integer
+        optional: true
+
+  listShipmentRates:
+    description: >-
+      The rates a shipment was quoted (GET /shipments/{id}/rates, 200), each with a carrier, a
+      service level, a price, and an estimate in days. Shippo marks the standouts in `attributes`:
+      CHEAPEST, FASTEST, and BESTVALUE, which is not always present — on a lane where one rate is
+      both cheapest and fastest, only those two appear. Proven by plans/rating/rate-shop.yaml.
+    adapter: listShipmentRates
+    tags: [rating]
+    oas:
+      operationId: ListShipmentRates
+    inputs:
+      - name: shipmentId
+        type: string
+        default:
+          from: createShipment.shipmentId
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 100
+        constraints:
+          min: 1
+          max: 100
+    outputs:
+      - name: rates
+        type: rate[]
+        elementFields:
+          - name: rateId
+            type: string
+          - name: provider
+            type: string
+          - name: amount
+            type: string
+      - name: count
+        type: integer
+        display: Rates
+      - name: providers
+        type: string
+        description: The carriers that answered, sorted and comma-joined
+      - name: currency
+        type: string
+        description: The currency the rates are quoted in; "" when there are none
+      - name: cheapestRateId
+        type: string
+        description: The rate marked CHEAPEST; "" when none is
+      - name: cheapestProvider
+        type: string
+      - name: cheapestAmount
+        type: string
+        display: Cheapest
+      - name: fastestProvider
+        type: string
+        description: The carrier of the rate marked FASTEST; "" when none is
+      - name: attributeCount
+        type: integer
+        description: Rates carrying at least one attribute
+
+  listShipmentRatesByCurrency:
+    description: >-
+      The same rates converted (GET /shipments/{id}/rates/{currency}, 200). Each rate keeps `amount`
+      and `currency` as quoted and adds `amount_local` and `currency_local` in the currency asked
+      for, so a US shipment's 63.94 USD reads 55.40 EUR beside it. Proven by
+      plans/rating/currencies.yaml.
+    adapter: listShipmentRatesByCurrency
+    tags: [rating]
+    oas:
+      operationId: ListShipmentRatesByCurrencyCode
+    inputs:
+      - name: shipmentId
+        type: string
+        default:
+          from: createShipment.shipmentId
+      - name: currencyCode
+        type: string
+        default: EUR
+        description: An ISO 4217 code
+      - name: pageSize
+        type: integer
+        default: 100
+        constraints:
+          min: 1
+          max: 100
+    outputs:
+      - name: count
+        type: integer
+        display: Rates
+      - name: currency
+        type: string
+        description: The currency the rates were quoted in
+      - name: currencyLocal
+        type: string
+        display: In
+        description: The currency asked for
+      - name: convertedCount
+        type: integer
+        description: Rates that came back with an amount in the local currency
+
+  getRate:
+    description: >-
+      Read one rate by its object id (GET /rates/{id}, 200), with everything the listing shows and
+      more: the service level's token and terms, the delivery estimate, the carrier's zone, the
+      insurance included, and `provider_image_75` and `provider_image_200`, which are https URLs to
+      the carrier's logo. `servicelevel.display_name` and `parent_servicelevel` come back null where
+      the spec types them strings. Proven by plans/rating/rate-shop.yaml.
+    adapter: getRate
+    tags: [rating]
+    oas:
+      operationId: GetRate
+    inputs:
+      - name: rateId
+        type: string
+        default:
+          from: listShipmentRates.rates
+          select:
+            strategy: first
+            field: rateId
+    outputs:
+      - name: rateId
+        type: string
+      - name: provider
+        type: string
+        display: Carrier
+      - name: serviceLevelName
+        type: string
+      - name: serviceLevelToken
+        type: string
+      - name: amount
+        type: string
+        display: Amount
+      - name: currency
+        type: string
+      - name: estimatedDays
+        type: integer
+        optional: true
+      - name: attributes
+        type: string
+        description: CHEAPEST, FASTEST, BESTVALUE, sorted and comma-joined; "" when none
+      - name: zone
+        type: string
+        description: The carrier's zone for the lane; "" when it gives none
+      - name: shipmentId
+        type: string
+      - name: carrierAccountId
+        type: string
+      - name: providerImage
+        type: string
+        description: An https URL to the carrier's logo, which the rates visualizer shows
+      - name: test
+        type: boolean

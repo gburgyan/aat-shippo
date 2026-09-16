@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rates</title>
+<style>
+  body {
+    margin: 0;
+    padding: 12px;
+    background: var(--color-bg, #0f1117);
+    color: var(--color-text, #e4e4e7);
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 13px;
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 10px; }
+  h1 { margin: 0; font-size: 15px; }
+  .muted { color: var(--color-text-secondary, #a1a1aa); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td {
+    text-align: left;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--color-border, #27272a);
+    vertical-align: middle;
+  }
+  th { font-weight: 600; color: var(--color-text-secondary, #a1a1aa); white-space: nowrap; }
+  .num { text-align: right; font-family: var(--font-mono, ui-monospace, monospace); white-space: nowrap; }
+  .carrier { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .carrier img { width: 18px; height: 18px; object-fit: contain; border-radius: 2px; }
+  .chip {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 4px;
+    border: 1px solid var(--color-border, #27272a);
+    border-radius: 10px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .chip.CHEAPEST { border-color: var(--color-success, #4ade80); color: var(--color-success, #4ade80); }
+  .chip.FASTEST { border-color: var(--color-primary, #60a5fa); color: var(--color-primary, #60a5fa); }
+  .chip.BESTVALUE { border-color: var(--color-warning, #fbbf24); color: var(--color-warning, #fbbf24); }
+  .msgs { margin-top: 12px; }
+  .msgs h2 { font-size: 13px; margin: 0 0 6px; }
+  .msgs li { margin-bottom: 3px; }
+  .src { font-family: var(--font-mono, ui-monospace, monospace); color: var(--color-text-secondary, #a1a1aa); }
+</style>
+</head>
+<body>
+<div id="root"><p class="muted">Waiting for data…</p></div>
+<script>
+(function () {
+  'use strict';
+
+  var MAX_ROWS = 80;
+
+  // Build nodes with textContent only: the body comes from the API under test.
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      if (key === 'text') {
+        node.textContent = attrs[key];
+      } else {
+        node.setAttribute(key, attrs[key]);
+      }
+    });
+    (children || []).forEach(function (child) {
+      if (child) node.appendChild(child);
+    });
+    return node;
+  }
+
+  // An https image URL is the only kind the host's CSP allows.
+  function logo(url) {
+    if (typeof url !== 'string' || url.indexOf('https://') !== 0) return null;
+    return el('img', { src: url, alt: '' });
+  }
+
+  function text(value) {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function rateRows(rates) {
+    return rates.slice(0, MAX_ROWS).map(function (rate) {
+      rate = rate || {};
+      var service = (rate.servicelevel && rate.servicelevel.name) || rate.servicelevel_name || '';
+      var attrs = Array.isArray(rate.attributes) ? rate.attributes : [];
+      var chips = attrs.map(function (a) {
+        return el('span', { 'class': 'chip ' + text(a), text: text(a) });
+      });
+      var days = rate.estimated_days;
+      var local = '';
+      if (rate.amount_local && rate.currency_local && rate.currency_local !== rate.currency) {
+        local = text(rate.amount_local) + ' ' + text(rate.currency_local);
+      }
+      return el('tr', {}, [
+        el('td', {}, [el('div', { 'class': 'carrier' }, [
+          logo(rate.provider_image_75),
+          el('span', { text: text(rate.provider) })
+        ])]),
+        el('td', { text: text(service) }),
+        el('td', { 'class': 'num', text: text(rate.amount) + ' ' + text(rate.currency) }),
+        el('td', { 'class': 'num muted', text: local }),
+        el('td', { 'class': 'num', text: days === null || days === undefined ? '—' : text(days) }),
+        el('td', {}, chips)
+      ]);
+    });
+  }
+
+  function messageList(messages) {
+    var items = messages.map(function (m) {
+      m = m || {};
+      return el('li', {}, [
+        el('span', { 'class': 'src', text: text(m.source) + ': ' }),
+        el('span', { text: text(m.text) })
+      ]);
+    });
+    return el('div', { 'class': 'msgs' }, [
+      el('h2', { text: 'Why the others did not answer (' + messages.length + ')' }),
+      el('ul', {}, items)
+    ]);
+  }
+
+  function render(data) {
+    var root = document.getElementById('root');
+    root.textContent = '';
+
+    // The same table serves three shapes: a rates listing, the rates a shipment carries inline,
+    // and the bare array a bodyPath match hands over.
+    var rates = [];
+    var messages = [];
+    if (Array.isArray(data)) {
+      rates = data;
+    } else if (data && Array.isArray(data.results)) {
+      rates = data.results;
+    } else if (data && Array.isArray(data.rates)) {
+      rates = data.rates;
+      if (Array.isArray(data.messages)) messages = data.messages;
+    }
+
+    var carriers = {};
+    rates.forEach(function (r) { if (r && r.provider) carriers[r.provider] = true; });
+    var carrierCount = Object.keys(carriers).length;
+
+    root.appendChild(el('header', {}, [
+      el('h1', { text: rates.length + (rates.length === 1 ? ' rate' : ' rates') }),
+      el('span', { 'class': 'muted', text: carrierCount + (carrierCount === 1 ? ' carrier' : ' carriers') })
+    ]));
+
+    if (!rates.length) {
+      root.appendChild(el('p', { 'class': 'muted', text: 'No carrier quoted this shipment.' }));
+    } else {
+      root.appendChild(el('table', {}, [
+        el('thead', {}, [el('tr', {}, [
+          el('th', { text: 'Carrier' }),
+          el('th', { text: 'Service' }),
+          el('th', { 'class': 'num', text: 'Price' }),
+          el('th', { 'class': 'num', text: 'Converted' }),
+          el('th', { 'class': 'num', text: 'Days' }),
+          el('th', { text: '' })
+        ])]),
+        el('tbody', {}, rateRows(rates))
+      ]));
+    }
+
+    if (messages.length) root.appendChild(messageList(messages));
+  }
+
+  window.addEventListener('message', function (event) {
+    var msg = event.data;
+    if (!msg || msg.type !== 'aat-visualizer-data') return;
+    Object.keys(msg.theme || {}).forEach(function (name) {
+      document.documentElement.style.setProperty(name, msg.theme[name]);
+    });
+    render(msg.body);
+    requestAnimationFrame(function () {
+      parent.postMessage({ type: 'aat-visualizer-resize', height: document.documentElement.scrollHeight }, '*');
+    });
+  });
+
+  parent.postMessage({ type: 'aat-visualizer-ready' }, '*');
+})();
+</script>
+</body>
+</html>

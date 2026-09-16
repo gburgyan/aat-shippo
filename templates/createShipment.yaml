@@ -1,0 +1,45 @@
+adapter: createShipment
+protocol: http
+
+request:
+  method: POST
+  path: /shipments
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "address_from": "{{addressFrom}}",
+      "address_to": "{{addressTo}}",
+      "parcels": {{parcels}},
+      "metadata": "{{metadata}}"{{?async}},
+      "async": {{async}}{{/async}}{{?shipmentDate}},
+      "shipment_date": "{{shipmentDate}}"{{/shipmentDate}}{{?carrierAccounts}},
+      "carrier_accounts": {{carrierAccounts}}{{/carrierAccounts}}{{?customsDeclaration}},
+      "customs_declaration": "{{customsDeclaration}}"{{/customsDeclaration}}
+    }
+
+response:
+  extract:
+    shipmentId: object_id
+    status: status
+    addressFrom: address_from.object_id
+    addressTo: address_to.object_id
+    parcelCount: 'parcels.#'
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  # A carrier that cannot serve the shipment leaves a line in messages rather than failing the
+  # request, so what matters is which carriers answered and how many did not.
+  transform: |
+    local rates = json_path("rates") or {}
+    local seen, providers = {}, {}
+    for _, r in ipairs(rates) do
+      local p = tostring(r.provider)
+      if not seen[p] then seen[p] = true; table.insert(providers, p) end
+    end
+    table.sort(providers)
+    outputs.rateCount = #rates
+    outputs.providers = table.concat(providers, ",") .. ""
+    outputs.messageCount = #(json_path("messages") or {})
+    return outputs

@@ -1,0 +1,25 @@
+# The shipment listing, narrowed to what this package created. ListShipments and ListTransactions
+# are the only two operations whose spec declares object_created_gte, which is what makes both
+# guards possible.
+intent:
+  goal: listed
+  description: Shipments page, and narrow to those created since the package started
+
+execution:
+  steps:
+    - id: listed
+      node: listShipments
+      isGoal: true
+      description: Shipments created since packageEpoch, with the package's counted apart
+      values:
+        pageSize: 25
+        createdGte: "{{env.packageEpoch}}"
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: count > 0 && ourCount > 0 && ourCount <= count && liveCount == 0

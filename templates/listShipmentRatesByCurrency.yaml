@@ -1,0 +1,25 @@
+adapter: listShipmentRatesByCurrency
+protocol: http
+
+request:
+  method: GET
+  path: /shipments/{{shipmentId}}/rates/{{currencyCode}}?results={{pageSize}}
+
+response:
+  extract:
+    count: 'results.#'
+  # Each rate keeps the currency it was quoted in and gains amount_local in the one asked for.
+  transform: |
+    local rates = json_path("results") or {}
+    local converted = 0
+    outputs.currency = ""
+    outputs.currencyLocal = ""
+    for _, r in ipairs(rates) do
+      if outputs.currency == "" then outputs.currency = tostring(r.currency) end
+      if type(r.currency_local) == "string" and r.currency_local ~= "" then
+        outputs.currencyLocal = tostring(r.currency_local)
+      end
+      if type(r.amount_local) == "string" and r.amount_local ~= "" then converted = converted + 1 end
+    end
+    outputs.convertedCount = converted
+    return outputs

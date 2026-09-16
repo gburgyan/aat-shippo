@@ -1,0 +1,21 @@
+visualizers:
+  # The rates a shipment was quoted, as a carrier x service table.
+  - id: rates
+    name: Rates
+    file: rates.html
+    match:
+      node: listShipmentRates
+
+  # The same table for the rates a shipment carries inline, on the create and on a poll.
+  - id: shipment-rates
+    name: Rates
+    file: rates.html
+    match:
+      bodyPath: rates
+
+  # The same again for a currency-converted listing.
+  - id: rates-in-currency
+    name: Rates
+    file: rates.html
+    match:
+      node: listShipmentRatesByCurrency

@@ -1,0 +1,139 @@
+# A US domestic shipment rated by every carrier on the account, then one rate read on its own.
+#
+# Shippo documents rating as asynchronous — the shipment carries a QUEUED / WAITING / SUCCESS /
+# ERROR status for it — so the shipment is polled rather than assumed. In test mode it has always
+# come back SUCCESS with its rates already attached, and the poll settles on its first read; the
+# poll stays because it is what the API asks for.
+#
+# The rate count is asserted, but not which carriers answered: a carrier that cannot serve the lane
+# leaves a line in `messages` instead of failing the request, and UPS rate-limits itself under a
+# fast batch, so a plan that named a carrier would fail for a reason that is not ours. The matrix
+# plans that do pin a carrier ask for it by account.
+intent:
+  goal: rate
+  description: A shipment is rated by the carriers that serve its lane, cheapest and fastest marked
+
+execution:
+  steps:
+    - id: from
+      node: createAddress
+      description: The sender, in San Francisco
+      values:
+        name: AAT Shippo
+        street1: 215 Clayton St.
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && isComplete == true
+
+    - id: to
+      node: createAddress
+      dependsOn: [from]
+      description: The recipient, in New York
+      values:
+        name: AAT Recipient
+        street1: 350 Fifth Avenue
+        city: New York
+        state: NY
+        zip: "10118"
+        country: US
+        phone: "+15553419394"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && isComplete == true
+
+    - id: parcel
+      node: createParcel
+      dependsOn: [to]
+      description: A 10 x 8 x 4 in, 2 lb box
+      values:
+        length: "10"
+        width: "8"
+        height: "4"
+        distanceUnit: in
+        weight: "2"
+        massUnit: lb
+
+    - id: shipment
+      node: createShipment
+      dependsOn: [parcel]
+      description: The shipment, left to Shippo to rate in the background
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              test == true && metadata == "aat-shippo" && parcelCount == 1 &&
+              addressFrom == "{{from.addressId}}" && addressTo == "{{to.addressId}}" &&
+              status in ["QUEUED", "WAITING", "SUCCESS"]
+
+    - id: settled
+      node: getShipment
+      dependsOn: [shipment]
+      description: Read until rating finishes; in test mode it already has
+      values:
+        shipmentId: {from: shipment.shipmentId}
+      repeat:
+        until: status == "SUCCESS"
+        interval: 1s
+        max: 15
+        timeout: 30s
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              shipmentId == "{{shipment.shipmentId}}" && status == "SUCCESS" &&
+              rateCount > 0 && test == true
+
+    - id: rates
+      node: listShipmentRates
+      dependsOn: [settled]
+      description: The rates the shipment was quoted, with the standouts marked
+      values:
+        shipmentId: {from: shipment.shipmentId}
+      # One of the ten list reads a minute test mode allows.
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              count == "{{settled.rateCount}}" && count > 0 && currency == "USD" &&
+              providers == "{{settled.providers}}" &&
+              cheapestRateId != "" && cheapestAmount != "" && attributeCount > 0
+
+    - id: rate
+      node: getRate
+      dependsOn: [rates]
+      isGoal: true
+      description: The cheapest rate, read on its own
+      values:
+        rateId: {from: rates.cheapestRateId}
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              rateId == "{{rates.cheapestRateId}}" && provider == "{{rates.cheapestProvider}}" &&
+              amount == "{{rates.cheapestAmount}}" && currency == "USD" &&
+              shipmentId == "{{shipment.shipmentId}}" && test == true &&
+              serviceLevelToken != "" && carrierAccountId != ""
+          # CHEAPEST is why this rate was picked; a rate can carry FASTEST too.
+          - type: predicate
+            expr: attributes in ["CHEAPEST", "CHEAPEST,FASTEST", "BESTVALUE,CHEAPEST", "BESTVALUE,CHEAPEST,FASTEST"]
