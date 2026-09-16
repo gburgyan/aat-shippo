@@ -418,6 +418,9 @@ Three smaller things the spec does not mention — [webhooks/lifecycle](plans/we
 - The listing declares no `page` or `results` parameters and pages anyway. This package sends
   neither and asserts `next` is absent instead: sending what the spec does not declare would be
   our bug rather than Shippo's.
+- Deleting a webhook and then reading it gives a `404` **the spec does not declare** — runtime
+  validation reports `GET operation request response code '404' does not exist`. The delete is
+  documented; the state it leaves behind is not.
 
 ### One object, two date formats
 
