@@ -1,0 +1,11 @@
+adapter: deleteServiceGroup
+protocol: http
+
+request:
+  method: DELETE
+  # The delete does take a path id, where the update does not.
+  path: /service-groups/{{serviceGroupId}}
+
+# 204, no body.
+response:
+  extract: {}

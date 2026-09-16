@@ -1,0 +1,36 @@
+adapter: updateServiceGroup
+protocol: http
+
+request:
+  method: PUT
+  # No id in the path: the group being updated is named by object_id in the body.
+  path: /service-groups
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "object_id": "{{serviceGroupId}}",
+      "name": "{{name}}",
+      "description": "{{description}}",
+      "type": "{{type}}",
+      "flat_rate": "{{flatRate}}",
+      "flat_rate_currency": "{{flatRateCurrency}}",
+      "is_active": {{isActive}},
+      "service_levels": [
+        {
+          "account_object_id": "{{accountObjectId}}",
+          "service_level_token": "{{serviceLevelToken}}"
+        }
+      ]
+    }
+
+response:
+  extract:
+    serviceGroupId: object_id
+    name: name
+    flatRate:
+      path: flat_rate
+      default: ""
+    isActive:
+      path: is_active
+      default: false

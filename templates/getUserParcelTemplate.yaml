@@ -1,0 +1,25 @@
+adapter: getUserParcelTemplate
+protocol: http
+
+request:
+  method: GET
+  path: /user-parcel-templates/{{templateId}}
+
+response:
+  extract:
+    templateId: object_id
+    name: name
+    length: length
+    width: width
+    height: height
+    weight: weight
+    # False even for the template that is the account's default: the default is held under
+    # /live-rates/settings/parcel-template, and this flag never learns about it.
+    isDefault:
+      path: is_default
+      default: false
+  transform: |
+    local created = json_path("object_created")
+    outputs.createdIsIso = type(created) == "string"
+      and string.match(created, "^%d%d%d%d%-%d%d%-%d%dT") ~= nil
+    return outputs

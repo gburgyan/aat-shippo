@@ -5,9 +5,11 @@ project. A graph describes each operation, plans chain them, and every plan runs
 test API. Everything this README says about Shippo came from those runs — where a run showed something
 no plan asserts yet, it says so.
 
-**Status:** carrier accounts, addresses, parcels, rating, and labels are done — 23 of Shippo's 70
-operations, over 24 nodes, all run by 17 plans that pass together in about 90 seconds, plus a layer
-matrix that crosses a lane with a parcel. Tracking, customs, batches and the account features are [not covered yet](#not-covered-yet).
+**Status:** carrier accounts, addresses, parcels, rating, labels, tracking, webhooks, and the
+account and checkout settings are done — 46 of Shippo's 70 operations, over 47 nodes, all run by 28
+plans that pass together in about two and a half minutes, plus two layer matrices: a lane crossed
+with a parcel, and Shippo's six deterministic tracking fixtures. Customs, batches, manifests,
+pickups and orders are [not covered yet](#not-covered-yet).
 
 ```text
 $ aat run plan labels/buy-and-refund
@@ -74,15 +76,16 @@ documentation does not tell you. This package is that knowledge in a form you ca
 - `graph.yaml` says what every operation takes and returns, **and what a run proved about it**, and
   [`docs/api/`](docs/api/) is that generated as a page per operation, with a diagram of how they wire
 - `templates/` is one small file per operation with the exact request and the paths its outputs come from
-- `plans/` is the call order for real tasks — rate and buy, buy in one call, refund, validate an address
-- `domain.yaml` is 18 concepts, each naming the plans that prove it
+- `plans/` is the call order for real tasks — rate and buy, buy in one call, refund, validate an
+  address, track a shipment, stand up a checkout option
+- `domain.yaml` is 31 concepts, each naming the plans that prove it
 
 Point a coding assistant at it and it has the whole workflow, not a pile of endpoint reference. That
 is the difference between an API you can read about and an API you can ship against tomorrow.
 
-**3. A demonstration of AAT.** This whole project is 1,213 lines of graph and 826 lines of templates —
-against a 23,631-line OpenAPI spec. One file per operation, small enough to hold in your head or an
-agent's context, and strictly validated before a single request goes out.
+**3. A demonstration of AAT.** This whole project is 2,110 lines of graph and 1,443 lines of
+templates — against a 23,631-line OpenAPI spec. One file per operation, small enough to hold in your
+head or an agent's context, and strictly validated before a single request goes out.
 
 ---
 
@@ -108,7 +111,8 @@ aat validate --strict                  # every file, template, plan, and OpenAPI
 aat run plan labels/buy-and-refund     # the run above
 aat run plan rating/rate-shop          # rate a shipment, read the cheapest rate on its own
 aat run plan addresses/validate        # watch Shippo correct a misspelled address
-aat run batch --env test-ci            # all 17 plans, paced, with the guards last
+aat run plan tracking/fixtures         # a tracking history, free and deterministic
+aat run batch --env test-ci            # all 28 plans, paced, with the guards last
 aat run batch matrix --env test-ci \
   --layer-group parcel-letter,parcel-large,parcel-heavy   # the matrix below
 aat run show latest                    # what the last run sent and got back
@@ -117,7 +121,7 @@ aat web view latest                    # open it in the browser
 
 The loop closes before anything is sent:
 
-![aat validate --strict checking the manifest, environments, domain, graph, OpenAPI, templates, layers, and plans](docs/images/demo-validate.gif)
+![aat validate --strict checking the manifest, environments, domain, graph, OpenAPI, templates, layers, and plans](docs/images/demo-validate.png)
 
 ### Environments
 
@@ -138,18 +142,45 @@ This package buys shipping labels. That is the point, and it is also the risk, s
   plan at its first object instead of buying a real label.
 - **Every object carries `metadata` starting `aat-shippo`,** so the guards can tell this package's
   objects from anything else on the account.
-- **Cleanup refunds; it never deletes.** Almost nothing in Shippo can be deleted — addresses, parcels,
-  shipments and orders are permanent — so every label node is paired with `createRefund` under
-  `when: status == "SUCCESS"`. A refund is the only way to un-buy a label.
-- **Two guards run last in every batch**, named `zz-` so they sort there:
-  [`no-live-labels`](plans/zz-guard/no-live-labels.yaml) fails if any label on the account was bought
-  with a live token, and [`no-unrefunded-labels`](plans/zz-guard/no-unrefunded-labels.yaml) fails if any
-  label this package bought is still in `SUCCESS`, which means a cleanup did not run. Both also assert
-  they found this package's labels at all, so neither can pass by finding nothing. Objects from other
-  work on the same account are counted apart and never fail a guard.
+- **Cleanup refunds where it cannot delete.** Almost nothing in Shippo can be deleted — addresses,
+  parcels, shipments and orders are permanent — so every label node is paired with `createRefund`
+  under `when: status == "SUCCESS"`. A refund is the only way to un-buy a label. The four things
+  that *can* be deleted — webhooks, parcel templates, service groups, and the default-template
+  setting — are paired with a real delete.
+- **Four guards run last in every batch**, named `zz-` so they sort there.
+  [`no-live-labels`](plans/zz-guard/no-live-labels.yaml) fails if any label on the account was
+  bought with a live token, and [`no-unrefunded-labels`](plans/zz-guard/no-unrefunded-labels.yaml)
+  fails if any label this package bought is still in `SUCCESS`, which means a cleanup did not run.
+  Both assert they found this package's labels at all, so neither can pass by finding nothing.
+  [`no-stray-webhooks`](plans/zz-guard/no-stray-webhooks.yaml) and
+  [`no-stray-account-objects`](plans/zz-guard/no-stray-account-objects.yaml) do the opposite, and
+  on purpose: their job **is** to find nothing, so they assert a count of zero and prove they read
+  the whole listing rather than that they found something. Objects from other work on the same
+  account are counted apart and never fail a guard.
+- **One write touches shared account state, and it is chosen to be inert.**
+  [carrier-writes](plans/account/carrier-writes.yaml) deactivates and reactivates a carrier account
+  — pinned to **couriersplease**, the one carrier that answers no lane at all, so switching it off
+  cannot change a rate anywhere else. Cleanup switches it back on regardless.
 
-In a full `aat run batch`, three plans buy four labels between them and the account ends with none of
-them bought.
+**Where the rails do not reach.** A `UserParcelTemplate`, a `ServiceGroup`, a `ShippoAccount` and a
+`Webhook` carry **neither `metadata` nor `test`**. There is no field to tag and no field to refuse
+on, so those objects are named with an `aat-shippo` prefix instead — a webhook, which has no name
+either, is recognised by its URL — and the guards count by that. It is a weaker rail than the one
+the rest of the package uses, and worth saying rather than glossing.
+
+Platform accounts are read and never created: Shippo's spec offers **no DELETE** for them, and a
+create is keyed to a real email address. On a test token the create answers `403` anyway, which is
+[what this package asserts](plans/account/platform-accounts.yaml).
+
+In a full `aat run batch`, four plans buy five labels between them and the account ends with none of
+them bought, and nothing else created anywhere in the run is still there.
+
+![Eleven steps of the buy-and-refund plan arriving one at a time, ending with the label refunded and the cleanup released](docs/images/demo-label.gif)
+
+That is the run at the top of this page as it actually happens — including the last three steps,
+where the refund is filed, the refund itself sits at `PENDING`, and the label flips to
+`REFUNDPENDING` straight away. The cleanup line at the end reports itself *released*: the plan
+refunded the label itself, so the pairing found nothing left to undo.
 
 ---
 
@@ -205,6 +236,44 @@ cost one command.
 
 Every layer sets inputs of `createParcel` and of nothing else, so a plan that pins its own parcel is
 immune and any plan that does not can be crossed with all of them.
+
+### The same trick, for free
+
+The parcel matrix rates eight real shipments against live carriers, which takes about a minute and
+depends on what those carriers say that day. The other axis in this package costs nothing and
+cannot flake: Shippo publishes six tracking numbers that always return the same history.
+
+```bash
+aat run batch tracking --env test-ci \
+  --layer-group track-pre-transit,track-transit,track-delivered,track-returned,track-failure,track-unknown
+```
+
+![Six deterministic tracking fixtures crossed with two plans, seven runs and seven deduplicated, in ten seconds](docs/images/demo-tracking.gif)
+
+Seven runs, seven skipped as duplicates, ten seconds, nothing bought. The dedup is visible in the
+recording and worth watching: `tracking/register` pins its own tracking number, so all six layers
+collapse onto its base run, while `tracking/fixtures` says nothing about which number and so picks
+up all six. **A layer only multiplies the plans it actually reaches.**
+
+And the six are not six independent states — they are one chain, which is the sort of thing you
+only notice by running all of them side by side:
+
+| Layer | Status | History | The chain it walked |
+|---|---|---:|---|
+| `track-pre-transit` | `PRE_TRANSIT` | 1 | PRE_TRANSIT |
+| `track-unknown` | `UNKNOWN` | 1 | UNKNOWN |
+| `track-transit` | `TRANSIT` | 2 | UNKNOWN → TRANSIT |
+| `track-failure` | `FAILURE` | 3 | UNKNOWN → TRANSIT → FAILURE |
+| `track-delivered` | `DELIVERED` | 4 | UNKNOWN → TRANSIT → **FAILURE** → DELIVERED |
+| `track-returned` | `RETURNED` | 5 | UNKNOWN → TRANSIT → FAILURE → DELIVERED → RETURNED |
+
+Shippo's happy path walks through a failure on its way to the door, and a return is modelled as
+something that happens *after* a delivery. Neither is wrong, exactly — but if you are writing a
+state machine against this API, that is the shape it has to accept.
+
+Each of those runs draws its own history in the web UI:
+
+![The tracking history as a timeline: status chips, the carrier's own wording, and where each event happened](docs/images/ui-tracking.png)
 
 ---
 
@@ -303,6 +372,98 @@ aat run plan drift/nullable-pagination.yaml                    # passes; the fin
 aat run plan drift/nullable-pagination.yaml --env test-strict  # fails, on Shippo's own spec
 ```
 
+### You cannot track a label you just bought
+
+This is the most expensive thing in this document to learn the hard way. Buy a label in test mode
+and Shippo issues a real, well-formed carrier tracking number. Track it and you get:
+
+```text
+GET /tracks/usps/9334620845500001485285
+400  {"detail": "usps is not a valid test tracking carrier. Please use 'shippo'"}
+```
+
+Every real carrier answers that, word for word, with its own name in it. Ask `shippo` for a number
+that is not one of its six fixtures and the refusal changes to a different one, about the number
+rather than the carrier. **Test-mode tracking is a closed fixture system with no way in from the
+labels you buy** — which is why the tracking plans start from a fixture and never from a purchase —
+[labels/tracking-refused](plans/labels/tracking-refused.yaml).
+
+### A webhook needs no receiver, and issues no secret
+
+Shippo asks for an event and a URL and nothing else. There is no verification handshake, no
+challenge, and no ping, so the whole create → read → list → update → delete lifecycle is testable
+against a URL that never answers — which is exactly how this package tests it. Delivery, payloads,
+retries and signatures are not testable without a receiver, and nothing here claims them.
+
+There is also **no signing secret**. Most webhook APIs hand you one on create and you spend a
+paragraph explaining how to keep it out of your logs; the `Webhook` object has no such field at all.
+Three smaller things the spec does not mention — [webhooks/lifecycle](plans/webhooks/lifecycle.yaml):
+
+- `event: all` is stored and **read back as `*`**, which the spec's own enum does not list.
+- Updating a webhook **does not move its `object_updated`**, so the object carries no trace of the change.
+- The listing declares no `page` or `results` parameters and pages anyway. This package sends
+  neither and asserts `next` is absent instead: sending what the spec does not declare would be
+  our bug rather than Shippo's.
+
+### One object, two date formats
+
+Every endpoint under `/user-parcel-templates` renders timestamps in **Go's default time format**:
+
+```text
+"object_created": "2026-09-16 13:23:18.665011 +0000 UTC"
+```
+
+Not ISO 8601, which is what the rest of this API sends and what the spec declares. It is not a
+create-only slip — the read renders it the same way. What makes it unmistakable is fetching *the
+same object* through `GET /live-rates/settings/parcel-template`, where it comes back as
+`2026-09-16T13:23:18.665Z`. One object, two renderings, decided by which endpoint you ask —
+[account/parcel-templates](plans/account/parcel-templates.yaml).
+
+### A service group cannot be turned off
+
+`is_active` is required when you update a service group. Send it as `false` and you get:
+
+```text
+400  {"is_active": ["field is required"]}
+```
+
+Byte for byte what you get by leaving the field out. A `false` is not distinguished from an absent
+value, so the field has exactly one reachable value and a service group cannot be deactivated
+through its own update endpoint — [account/service-groups](plans/account/service-groups.yaml).
+
+### Live rates are your service groups, not carrier rates
+
+`POST /live-rates` looks like a rate shop and is not one. Each option it returns is a **service
+group** you configured — the `title` is the group's name, the `amount` its configured price — so an
+account with no service groups gets an empty list back and no error at all. The order that works is
+save a parcel shape, make it the account's default, create a service group, *then* ask for live
+rates with no parcel named. `address_from` is required in practice although the spec marks it
+optional — [account/live-rates](plans/account/live-rates.yaml).
+
+### Errors come in four shapes
+
+A client that parses one of these will break on the others:
+
+| Shape | Where |
+|---|---|
+| `{"detail": "Not found."}` | most endpoints |
+| `{"is_active": ["field is required"]}` | field-level rejections |
+| `{"message": "...", "details": "..."}` | `/live-rates` |
+| `"Unauthorized to create accounts"` — a bare JSON string | `POST /shippo-accounts` |
+
+### Two more endpoints that need a trailing slash
+
+`GET /carrier_accounts/reg-status` answers `301` to the same path with a slash on the end, exactly
+as `GET /refunds/` does, and the spec declares both without one.
+
+### Three listings that page like nothing else
+
+`/user-parcel-templates` answers a bare `{results}` with no count and no cursors — and sends
+`results: null`, not `[]`, when the account has none. `/service-groups` answers a **bare JSON
+array** with no envelope at all. And `/shippo-accounts` and `/live-rates` send `next` and `previous`
+as **empty strings** where every other listing sends `null`, while omitting the `count` the spec
+declares.
+
 ### The carrier grid
 
 15 carrier accounts come active on a test token, and **10 of them will actually quote**. FedEx is
@@ -327,9 +488,15 @@ carriers/      what the token can ship with, and the parcel templates carriers p
 addresses/     create, read, list, and both ways of validating
 parcels/       by dimensions, and from a carrier's template token
 rating/        shipments, rate shopping, and the same rates in another currency
-labels/        the two-step purchase, the one-call Instalabel, formats, and refunds
+labels/        the two-step purchase, the one-call Instalabel, formats, refunds, and
+               the tracking number test mode will not track
+tracking/      the six fixtures, and registering a number to be watched
+webhooks/      the whole lifecycle, with no receiver anywhere
+account/       parcel templates, service groups, rates at checkout, platform accounts,
+               and the one carrier write that is safe to make
 matrix/        lanes with nothing said about the parcel, for the layer groups to cross
-zz-guard/      run last: no live labels, and nothing bought and left unrefunded
+zz-guard/      run last: no live labels, nothing left unrefunded, and nothing this
+               package created still sitting on the account
 drift/         outside plans/, so a batch never runs it: what the spec gets wrong
 ```
 
@@ -365,6 +532,29 @@ Every operation below has a node and at least one passing plan.
 | `CreateRefund` | `createRefund` | [labels/buy-and-refund](plans/labels/buy-and-refund.yaml), and every label node's cleanup |
 | `GetRefund` | `getRefund` | [labels/buy-and-refund](plans/labels/buy-and-refund.yaml) |
 | `ListRefunds` | `listRefunds` | [labels/buy-and-refund](plans/labels/buy-and-refund.yaml) |
+| `CreateTrack` | `createTrack` | [tracking/register](plans/tracking/register.yaml) |
+| `GetTrack` | `getTrack` | [tracking/fixtures](plans/tracking/fixtures.yaml) (all six layers), [tracking/register](plans/tracking/register.yaml), [labels/tracking-refused](plans/labels/tracking-refused.yaml), [drift/nullable-track](drift/nullable-track.yaml) |
+| `createWebhook` | `createWebhook` | [webhooks/lifecycle](plans/webhooks/lifecycle.yaml) |
+| `getWebhook` | `getWebhook` | [webhooks/lifecycle](plans/webhooks/lifecycle.yaml) |
+| `updateWebhook` | `updateWebhook` | [webhooks/lifecycle](plans/webhooks/lifecycle.yaml) |
+| `listWebhooks` | `listWebhooks` | [webhooks/lifecycle](plans/webhooks/lifecycle.yaml), [zz-guard/no-stray-webhooks](plans/zz-guard/no-stray-webhooks.yaml) |
+| `deleteWebhook` | `deleteWebhook` | [webhooks/lifecycle](plans/webhooks/lifecycle.yaml), and every webhook node's cleanup |
+| `CreateUserParcelTemplate` | `createUserParcelTemplate` | [account/parcel-templates](plans/account/parcel-templates.yaml), [account/live-rates](plans/account/live-rates.yaml) |
+| `GetUserParcelTemplate` | `getUserParcelTemplate` | [account/parcel-templates](plans/account/parcel-templates.yaml) |
+| `UpdateUserParcelTemplate` | `updateUserParcelTemplate` | [account/parcel-templates](plans/account/parcel-templates.yaml) |
+| `ListUserParcelTemplates` | `listUserParcelTemplates` | [account/parcel-templates](plans/account/parcel-templates.yaml), [zz-guard/no-stray-account-objects](plans/zz-guard/no-stray-account-objects.yaml) |
+| `DeleteUserParcelTemplate` | `deleteUserParcelTemplate` | every parcel template node's cleanup |
+| `CreateServiceGroup` | `createServiceGroup` | [account/service-groups](plans/account/service-groups.yaml), [account/live-rates](plans/account/live-rates.yaml) |
+| `UpdateServiceGroup` | `updateServiceGroup` | [account/service-groups](plans/account/service-groups.yaml) |
+| `ListServiceGroups` | `listServiceGroups` | [account/service-groups](plans/account/service-groups.yaml), [zz-guard/no-stray-account-objects](plans/zz-guard/no-stray-account-objects.yaml) |
+| `DeleteServiceGroup` | `deleteServiceGroup` | every service group node's cleanup |
+| `CreateLiveRate` | `createLiveRate` | [account/live-rates](plans/account/live-rates.yaml) |
+| `GetDefaultParcelTemplate` | `getDefaultParcelTemplate` | [account/live-rates](plans/account/live-rates.yaml) |
+| `UpdateDefaultParcelTemplate` | `updateDefaultParcelTemplate` | [account/live-rates](plans/account/live-rates.yaml) |
+| `DeleteDefaultParcelTemplate` | `deleteDefaultParcelTemplate` | the default template node's cleanup |
+| `ListShippoAccounts` | `listShippoAccounts` | [account/platform-accounts](plans/account/platform-accounts.yaml) |
+| `UpdateCarrierAccount` | `updateCarrierAccount` | [account/carrier-writes](plans/account/carrier-writes.yaml) |
+| `GetCarrierRegistrationStatus` | `getCarrierRegistrationStatus` | [account/carrier-writes](plans/account/carrier-writes.yaml) |
 
 ---
 
@@ -372,13 +562,14 @@ Every operation below has a node and at least one passing plan.
 
 | Feature | Where |
 |---|---|
-| **Layers and layer groups** | Three parcel layers crossed with two lanes, deduplicated, in one command |
+| **Layers and layer groups** | Two axes: three parcel layers crossed with two lanes, and six tracking fixtures crossed with two plans — both deduplicated, one command each |
 | **Runtime OpenAPI validation** | Every request and response checked against Shippo's own spec; `test-strict` turns findings into failures |
 | **Cleanup pairings** | `createTransaction → createRefund` with `when: status == "SUCCESS"`, released when a plan refunds for itself |
-| **Guards** | Two `zz-` plans that page the whole account and can't pass by finding nothing |
+| **Guards** | Four `zz-` plans: two that page the account and can't pass by finding nothing, two whose job is to find nothing and that prove they read the whole listing |
 | **`repeat`** | Polling on a status (`until`) and paging a listing (`next`), both in the guards and the label plans |
-| **Lua transforms** | Counting a page's own objects, deriving a label's real format from its URL, turning a rate list into cheapest/fastest |
-| **Visualizers** | Two HTML files, six registrations: the rates table and the rendered label |
+| **`expectFailure`** | Four steps that are supposed to fail, each pinning an exact status and Shippo's own error body |
+| **Lua transforms** | Counting a page's own objects, deriving a label's real format from its URL, turning a rate list into cheapest/fastest, and reading a tracking history as the chain it walked |
+| **Visualizers** | Three HTML files, seven registrations: the rates table, the rendered label, and the tracking timeline |
 | **Archives** | Every request and response kept, with the token redacted; `aat run show`, Copy as cURL, and the web UI |
 | **Strict decoding** | An unknown key in any project file is an error naming the line and the nearest valid key |
 | **Environments** | One chain, four runnable environments, differing only in the version header and how strict validation is |
@@ -430,10 +621,20 @@ still works. The overlap is real and worth saying out loud.
 
 ## Not covered yet
 
-Tracking and its six deterministic `SHIPPO_*` fixtures, webhooks, customs declarations and items,
-international lanes end to end, batches, manifests, pickups, orders, service groups, user parcel
-templates, live rates, and platform accounts. The graph covers 23 of Shippo's 70 operations; the rest
-arrive with their plans, not before.
+Customs declarations and items, international lanes end to end, batches, manifests, pickups, and
+orders. The graph covers 46 of Shippo's 70 operations; the rest arrive with their plans, not before.
+
+Four operations are deliberately not covered, and will stay that way:
+
+- **`CreateShippoAccount` / `UpdateShippoAccount`** — the create answers `403` on a test token, and
+  Shippo's spec offers no DELETE at all, so a managed account is permanent and keyed to a real
+  email address. The listing is covered; the write is not, and
+  [a plan says so](plans/account/platform-accounts.yaml).
+- **`CreateCarrierAccount` / `RegisterCarrierAccount`** — these connect carrier accounts you bring
+  yourself. UPS alone wants fifteen fields including a recent invoice, and FedEx wants SMS or email
+  verification. Neither is drivable from a test token.
+- **`InitiateOauth2Signin`** — a browser redirect with no token exchange in the spec and no headless
+  completion. It belongs in a negative suite asserting the refusal, not here.
 
 Also not here yet: a lane layer axis (it needs the from and to addresses as separate nodes), nightly
 CI, and the packaged MCP kit.
@@ -445,14 +646,14 @@ CI, and the packaged MCP kit.
 ```text
 aat-project.yaml            the manifest: where everything lives
 env.yaml                    four environments over one shared base
-graph.yaml                  24 nodes over 23 operations, each bound to Shippo's spec
-domain.yaml                 18 concepts, each naming the plans that prove it
+graph.yaml                  47 nodes over 46 operations, each bound to Shippo's spec
+domain.yaml                 31 concepts, each naming the plans that prove it
 openapi/public-api.yaml     Shippo's spec, vendored verbatim
 templates/                  one file per node: the request, and where each output comes from
-layers/                     the parcel axis: three files, each setting one node's inputs
+layers/                     two axes, nine files: three parcels and six tracking fixtures
 plans/                      what runs, by family
 drift/                      outside plans/, so a batch never runs it
-visualizers/                the rates table and the rendered label
+visualizers/                the rates table, the rendered label, the tracking timeline
 docs/api/                   generated from the graph: a page per node, and a diagram of the wiring
 docs/carrier-lane-coverage.md   which carriers answer on which lanes, and why the others don't
 docs/images/                what this README embeds

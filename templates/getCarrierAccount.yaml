@@ -9,6 +9,7 @@ response:
   extract:
     carrierAccountId: object_id
     carrier: carrier
+    accountId: account_id
     carrierName:
       path: carrier_name
       default: ""

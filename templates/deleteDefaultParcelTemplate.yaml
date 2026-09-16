@@ -1,0 +1,10 @@
+adapter: deleteDefaultParcelTemplate
+protocol: http
+
+request:
+  method: DELETE
+  path: /live-rates/settings/parcel-template
+
+# 204, no body. It clears the setting; the template it pointed at is untouched.
+response:
+  extract: {}

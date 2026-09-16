@@ -1,0 +1,20 @@
+adapter: getDefaultParcelTemplate
+protocol: http
+
+request:
+  method: GET
+  path: /live-rates/settings/parcel-template
+
+response:
+  extract:
+    templateId:
+      path: result.object_id
+      default: ""
+    name:
+      path: result.name
+      default: ""
+  # `result` is null when no default is set, where the spec declares an object, so whether one is
+  # set has to be derived rather than read.
+  transform: |
+    outputs.isSet = json_path("result") ~= nil
+    return outputs

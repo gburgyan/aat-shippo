@@ -1,0 +1,10 @@
+adapter: deleteUserParcelTemplate
+protocol: http
+
+request:
+  method: DELETE
+  path: /user-parcel-templates/{{templateId}}
+
+# 204, no body.
+response:
+  extract: {}

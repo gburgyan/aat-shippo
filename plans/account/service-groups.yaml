@@ -1,0 +1,122 @@
+# A service group is a shipping option to show a customer: a name, a price, and the carrier
+# service levels behind it. Creating one is the only way to make /live-rates answer anything.
+#
+# The finding this plan exists for is in the last step. `is_active` is required on an update, and
+# **sending it as false is refused exactly as if it were missing** — the same 400 and the same
+# body, `{"is_active": ["field is required"]}` — so a service group cannot be deactivated through
+# its own update endpoint. That is the shape of a boolean read with a zero-value check rather than
+# a presence check, and it means a field the API documents as settable has one reachable value.
+#
+# Service levels are wired from the carrier account listing, because listing with
+# service_levels: true is the only place they appear at all: reading one carrier account omits them
+# entirely (plans/carriers/accounts.yaml pins that).
+intent:
+  goal: cannotDeactivate
+  description: A service group can be created and renamed, and cannot be deactivated
+
+execution:
+  steps:
+    - id: accounts
+      node: listCarrierAccounts
+      description: The carrier accounts with their service levels, the only source of the tokens
+      values:
+        serviceLevels: true
+        pageSize: 100
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: serviceLevelCount > 100
+
+    - id: create
+      node: createServiceGroup
+      dependsOn: [accounts]
+      description: A flat-rate option over one USPS service level
+      values:
+        name: aat-shippo flat rate
+        accountObjectId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              name == "aat-shippo flat rate" && type == "FLAT_RATE" &&
+              flatRateCurrency == "USD" && isActive == true && serviceLevelCount == 1
+          # "5.00" went out; "5" came back.
+          - type: predicate
+            expr: 'flatRate == "5"'
+          # No metadata and no test field here either.
+          - type: fieldAbsent
+            path: metadata
+            raw: true
+
+    - id: listed
+      node: listServiceGroups
+      dependsOn: [create]
+      description: The account's groups, which come back as a bare array with no envelope
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: ourCount >= 1 && ourCount <= count
+
+    - id: rename
+      node: updateServiceGroup
+      dependsOn: [listed]
+      description: Rename and reprice it — the group is named in the body, not the path
+      values:
+        serviceGroupId: "{{create.serviceGroupId}}"
+        accountObjectId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              serviceGroupId == "{{create.serviceGroupId}}" &&
+              name == "aat-shippo flat rate renamed" && flatRate == "6.5" && isActive == true
+
+    - id: cannotDeactivate
+      node: updateServiceGroup
+      dependsOn: [rename]
+      isGoal: true
+      expectFailure:
+        status: [400]
+        description: is_active false is read as missing, so the group cannot be turned off
+      description: The same update with active false, which is refused as though it were absent
+      values:
+        serviceGroupId: "{{create.serviceGroupId}}"
+        isActive: false
+        accountObjectId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 400
+          # Byte for byte what omitting the field answers: false is not distinguished from absent.
+          - type: fieldExists
+            path: is_active
+            raw: true

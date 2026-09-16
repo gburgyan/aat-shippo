@@ -16,6 +16,7 @@ Read one carrier account by its object id (GET /carrier_accounts/{id}, 200). Car
 |------|------|-------------|
 | carrierAccountId | string |  |
 | carrier | string |  |
+| accountId | string | Shippo's own identifier for the account, which with `carrier` forms its unique key. Neither can be changed, so an update has to send both back unaltered. |
 | carrierName | string |  |
 | active | boolean |  |
 | isShippoAccount | boolean |  |

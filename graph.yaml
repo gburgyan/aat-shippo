@@ -102,6 +102,11 @@ nodes:
       - name: carrier
         type: string
         display: Carrier
+      - name: accountId
+        type: string
+        description: >-
+          Shippo's own identifier for the account, which with `carrier` forms its unique key.
+          Neither can be changed, so an update has to send both back unaltered.
       - name: carrierName
         type: string
       - name: active
@@ -1491,3 +1496,615 @@ nodes:
         default:
           from: createWebhook.webhookId
     outputs: []
+
+  # --- User parcel templates --------------------------------------------------------------
+  createUserParcelTemplate:
+    description: >-
+      Save a parcel shape to reuse (POST /user-parcel-templates, **201**, where the spec declares
+      200). The body is a `oneOf`: either a `template` token from a carrier's own parcel templates
+      with a weight, or a full set of dimensions with a name. This node writes the dimension form.
+      **This family's timestamps are not ISO 8601** — `object_created` comes back as
+      `2026-09-16 13:23:18.665011 +0000 UTC`, Go's default time format, where the rest of this API
+      sends ISO 8601. Reading it back gives the same thing; fetching the very same object through
+      the default-parcel-template setting gives ISO 8601, so one object has two renderings. A
+      UserParcelTemplate carries no `metadata` and no `test`, so this package tags it by name
+      instead. Cleanup deletes it. Proven by plans/account/parcel-templates.yaml.
+    adapter: createUserParcelTemplate
+    tags: [account, parcels]
+    oas:
+      operationId: CreateUserParcelTemplate
+    inputs:
+      - name: name
+        type: string
+        default: aat-shippo template
+        description: >-
+          The only tag this object can carry: it has no metadata field, so the guard and the
+          plans recognise their own by an aat-shippo name prefix.
+      - name: length
+        type: string
+        default: "10"
+      - name: width
+        type: string
+        default: "8"
+      - name: height
+        type: string
+        default: "4"
+      - name: distanceUnit
+        type: string
+        default: in
+      - name: weight
+        type: string
+        default: "2"
+      - name: weightUnit
+        type: string
+        default: lb
+    outputs:
+      - name: templateId
+        type: string
+        display: Template
+      - name: name
+        type: string
+        display: Name
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: distanceUnit
+        type: string
+      - name: weight
+        type: string
+      - name: weightUnit
+        type: string
+      - name: createdIsIso
+        type: boolean
+        description: >-
+          Whether object_created parsed as ISO 8601. False on a create — the one endpoint in this
+          API that answers a Go-formatted timestamp.
+    cleanup:
+      node: deleteUserParcelTemplate
+
+  getUserParcelTemplate:
+    description: >-
+      Read one saved parcel shape (GET /user-parcel-templates/{id}, 200). Renders its timestamps
+      in the same non-ISO format the create does, and carries the carrier `template` it was built
+      from — null for one built from dimensions, though the spec declares an object.
+      Proven by plans/account/parcel-templates.yaml.
+    adapter: getUserParcelTemplate
+    tags: [account, parcels]
+    oas:
+      operationId: GetUserParcelTemplate
+    inputs:
+      - name: templateId
+        type: string
+        default:
+          from: createUserParcelTemplate.templateId
+    outputs:
+      - name: templateId
+        type: string
+        display: Template
+      - name: name
+        type: string
+        display: Name
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: weight
+        type: string
+      - name: isDefault
+        type: boolean
+        description: >-
+          Shippo's own flag, which stays false even for the template that **is** the account's
+          default — the default lives under /live-rates/settings, not here
+      - name: createdIsIso
+        type: boolean
+
+  updateUserParcelTemplate:
+    description: >-
+      Change a saved parcel shape (PUT /user-parcel-templates/{id}, 200). The body is optional in
+      the spec and a whole template in practice. Proven by plans/account/parcel-templates.yaml.
+    adapter: updateUserParcelTemplate
+    tags: [account, parcels]
+    oas:
+      operationId: UpdateUserParcelTemplate
+    inputs:
+      - name: templateId
+        type: string
+        default:
+          from: createUserParcelTemplate.templateId
+      - name: name
+        type: string
+        default: aat-shippo template resized
+      - name: length
+        type: string
+        default: "12"
+      - name: width
+        type: string
+        default: "9"
+      - name: height
+        type: string
+        default: "6"
+      - name: distanceUnit
+        type: string
+        default: in
+      - name: weight
+        type: string
+        default: "3"
+      - name: weightUnit
+        type: string
+        default: lb
+    outputs:
+      - name: templateId
+        type: string
+        display: Template
+      - name: name
+        type: string
+        display: Name
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: weight
+        type: string
+
+  listUserParcelTemplates:
+    description: >-
+      List the account's saved parcel shapes (GET /user-parcel-templates, 200). The response is a
+      bare `{results}` with **no `count`, `next` or `previous`** — alone among this API's listings —
+      and takes no paging parameters. **When the account has none, `results` is `null` rather than
+      an empty array**, which the spec's array type disallows. Counts this package's own by their
+      aat-shippo name prefix, since the object has no metadata.
+      Proven by plans/account/parcel-templates.yaml.
+    adapter: listUserParcelTemplates
+    tags: [account, parcels, guard]
+    oas:
+      operationId: ListUserParcelTemplates
+    inputs: []
+    outputs:
+      - name: templates
+        type: userParcelTemplate[]
+        elementFields:
+          - name: templateId
+            type: string
+          - name: name
+            type: string
+      - name: count
+        type: integer
+        display: Templates
+        description: Derived by counting results, which the response does not report itself
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Templates whose name starts aat-shippo
+
+  deleteUserParcelTemplate:
+    description: >-
+      Delete a saved parcel shape (DELETE /user-parcel-templates/{id}, **204** with no body).
+      Paired to createUserParcelTemplate in the graph.
+      Proven by plans/account/parcel-templates.yaml.
+    adapter: deleteUserParcelTemplate
+    tags: [account, parcels, cleanup]
+    oas:
+      operationId: DeleteUserParcelTemplate
+    inputs:
+      - name: templateId
+        type: string
+        default:
+          from: createUserParcelTemplate.templateId
+    outputs: []
+
+  # --- Service groups ---------------------------------------------------------------------
+  createServiceGroup:
+    description: >-
+      Create a shipping option to show at checkout (POST /service-groups, 201). A group bundles
+      service levels from carrier accounts under one customer-facing name and price: `FLAT_RATE`,
+      `LIVE_RATE` or `FREE_SHIPPING`. Its `service_levels` name an account and one of that
+      account's service level tokens, which are visible **only** through the carrier account
+      listing with `service_levels: true`, so this node is wired from there. `flat_rate` is
+      normalised on the way in — "5.00" comes back "5". A ServiceGroup carries no `metadata` and no
+      `test`, so this package tags it by name. Cleanup deletes it.
+      Proven by plans/account/service-groups.yaml.
+    adapter: createServiceGroup
+    tags: [account, rating]
+    oas:
+      operationId: CreateServiceGroup
+    inputs:
+      - name: name
+        type: string
+        default: aat-shippo flat rate
+        description: Shown to the customer, and the only tag this object can carry
+      - name: description
+        type: string
+        default: aat-shippo test service group
+      - name: type
+        type: string
+        default: FLAT_RATE
+        description: LIVE_RATE, FLAT_RATE, or FREE_SHIPPING
+      - name: flatRate
+        type: string
+        default: "5.00"
+        description: Required unless the type is FREE_SHIPPING — a rule the schema states in prose
+      - name: flatRateCurrency
+        type: string
+        default: USD
+      - name: accountObjectId
+        type: string
+        default:
+          from: listCarrierAccounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      - name: serviceLevelToken
+        type: string
+        default: usps_first_class_mail_letter
+    outputs:
+      - name: serviceGroupId
+        type: string
+        display: Group
+      - name: name
+        type: string
+        display: Name
+      - name: type
+        type: string
+      - name: flatRate
+        type: string
+        description: Normalised — "5.00" goes out and "5" comes back
+      - name: flatRateCurrency
+        type: string
+      - name: isActive
+        type: boolean
+      - name: serviceLevelCount
+        type: integer
+    cleanup:
+      node: deleteServiceGroup
+
+  updateServiceGroup:
+    description: >-
+      Change a service group (**PUT /service-groups**, 200) — with **no path parameter**: the
+      group is named by `object_id` in the body, alone among this API's updates. `is_active` is
+      required, and **sending it as false is rejected exactly as if it were missing**
+      (`{"is_active": ["field is required"]}`, 400), so a service group cannot be deactivated
+      through its own update endpoint. Proven by plans/account/service-groups.yaml.
+    adapter: updateServiceGroup
+    tags: [account, rating]
+    oas:
+      operationId: UpdateServiceGroup
+    inputs:
+      - name: serviceGroupId
+        type: string
+        default:
+          from: createServiceGroup.serviceGroupId
+        description: Sent in the body as object_id, because the path carries no id
+      - name: name
+        type: string
+        default: aat-shippo flat rate renamed
+      - name: description
+        type: string
+        default: aat-shippo test service group
+      - name: type
+        type: string
+        default: FLAT_RATE
+      - name: flatRate
+        type: string
+        default: "6.50"
+      - name: flatRateCurrency
+        type: string
+        default: USD
+      - name: isActive
+        type: boolean
+        default: true
+        description: Required, and false is read as absent
+      - name: accountObjectId
+        type: string
+        default:
+          from: listCarrierAccounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      - name: serviceLevelToken
+        type: string
+        default: usps_first_class_mail_letter
+    outputs:
+      - name: serviceGroupId
+        type: string
+        display: Group
+      - name: name
+        type: string
+        display: Name
+      - name: flatRate
+        type: string
+      - name: isActive
+        type: boolean
+
+  listServiceGroups:
+    description: >-
+      List the account's service groups (GET /service-groups, 200). The response is a **bare JSON
+      array**, with no envelope, no count and no paging — the only listing in this API shaped that
+      way. Counts this package's own by their aat-shippo name prefix.
+      Proven by plans/account/service-groups.yaml.
+    adapter: listServiceGroups
+    tags: [account, rating, guard]
+    oas:
+      operationId: ListServiceGroups
+    inputs: []
+    outputs:
+      - name: groups
+        type: serviceGroup[]
+        elementFields:
+          - name: serviceGroupId
+            type: string
+          - name: name
+            type: string
+      - name: count
+        type: integer
+        display: Groups
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Groups whose name starts aat-shippo
+
+  deleteServiceGroup:
+    description: >-
+      Delete a service group (DELETE /service-groups/{id}, **204** with no body). The delete does
+      take a path id, where the update does not. Paired to createServiceGroup in the graph.
+      Proven by plans/account/service-groups.yaml.
+    adapter: deleteServiceGroup
+    tags: [account, rating, cleanup]
+    oas:
+      operationId: DeleteServiceGroup
+    inputs:
+      - name: serviceGroupId
+        type: string
+        default:
+          from: createServiceGroup.serviceGroupId
+    outputs: []
+
+  # --- Rates at checkout ------------------------------------------------------------------
+  updateDefaultParcelTemplate:
+    description: >-
+      Set the parcel a live-rate request uses when it names none
+      (PUT /live-rates/settings/parcel-template, 200). The body is just an `object_id`, and the
+      response wraps the whole template in a single-key `{result}` envelope — a shape nothing else
+      in this API uses. Note the template's own `is_default` stays false: this setting is the only
+      thing that knows. Cleanup clears it. Proven by plans/account/live-rates.yaml.
+    adapter: updateDefaultParcelTemplate
+    tags: [account, rating]
+    oas:
+      operationId: UpdateDefaultParcelTemplate
+    inputs:
+      - name: templateId
+        type: string
+        default:
+          from: createUserParcelTemplate.templateId
+    outputs:
+      - name: templateId
+        type: string
+        display: Default
+      - name: name
+        type: string
+        display: Name
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+    cleanup:
+      node: deleteDefaultParcelTemplate
+
+  getDefaultParcelTemplate:
+    description: >-
+      Read the account's default parcel template (GET /live-rates/settings/parcel-template, 200).
+      **When none is set, `result` is null**, where the spec declares a UserParcelTemplate object.
+      Proven by plans/account/live-rates.yaml.
+    adapter: getDefaultParcelTemplate
+    tags: [account, rating]
+    oas:
+      operationId: GetDefaultParcelTemplate
+    inputs: []
+    outputs:
+      - name: templateId
+        type: string
+        description: 'Empty when no default is set, which is how the account starts and ends'
+      - name: name
+        type: string
+        display: Default
+      - name: isSet
+        type: boolean
+        display: Set
+
+  deleteDefaultParcelTemplate:
+    description: >-
+      Clear the account's default parcel template
+      (DELETE /live-rates/settings/parcel-template, **204**). It takes no id — there is only one
+      setting — and it clears the setting without deleting the template it pointed at. Paired to
+      updateDefaultParcelTemplate in the graph. Proven by plans/account/live-rates.yaml.
+    adapter: deleteDefaultParcelTemplate
+    tags: [account, rating, cleanup]
+    oas:
+      operationId: DeleteDefaultParcelTemplate
+    inputs: []
+    outputs: []
+
+  createLiveRate:
+    description: >-
+      Ask what to show a customer at checkout (POST /live-rates, 200). This is not a rate shop:
+      **the options it returns are service groups, not carrier services** — each `title` is a
+      group's name and each `amount` its configured price — so it answers nothing at all until a
+      service group exists. Omitting `parcel` uses the account's default parcel template, which is
+      what makes that setting worth having. `address_from` is **required in practice** although the
+      spec marks it optional; without one the request is refused with an error in a third shape,
+      `{"message", "details"}`, rather than Shippo's usual flat `{"detail"}`.
+      Proven by plans/account/live-rates.yaml.
+    adapter: createLiveRate
+    tags: [account, rating]
+    oas:
+      operationId: CreateLiveRate
+    inputs:
+      - name: addressFromStreet1
+        type: string
+        default: 215 Clayton St
+      - name: addressFromCity
+        type: string
+        default: San Francisco
+      - name: addressFromState
+        type: string
+        default: CA
+      - name: addressFromZip
+        type: string
+        default: "94117"
+      - name: addressFromCountry
+        type: string
+        default: US
+      - name: addressToStreet1
+        type: string
+        default: 233 E Wacker Dr
+      - name: addressToCity
+        type: string
+        default: Chicago
+      - name: addressToState
+        type: string
+        default: IL
+      - name: addressToZip
+        type: string
+        default: "60601"
+      - name: addressToCountry
+        type: string
+        default: US
+      - name: itemTitle
+        type: string
+        default: aat-shippo widget
+      - name: itemQuantity
+        type: integer
+        default: 1
+      - name: itemPrice
+        type: string
+        default: "20.00"
+      - name: itemCurrency
+        type: string
+        default: USD
+      - name: itemWeight
+        type: string
+        default: "1"
+      - name: itemWeightUnit
+        type: string
+        default: lb
+    outputs:
+      - name: count
+        type: integer
+        display: Options
+      - name: titles
+        type: string
+        display: Offered
+        description: Each option's title, comma-joined — these are service group names
+      - name: firstAmount
+        type: string
+      - name: firstCurrency
+        type: string
+
+  # --- Platform accounts ------------------------------------------------------------------
+  listShippoAccounts:
+    description: >-
+      List the Shippo managed accounts under this one (GET /shippo-accounts, 200). **Creating one
+      is gated**: POST answers 403 with the bare JSON string "Unauthorized to create accounts" —
+      a third error envelope again — on a standard test token, and the API offers no DELETE at all,
+      so this package reads and never writes. Its pagination is its own too: `next` and `previous`
+      come back as **empty strings** where every other listing sends null, and the `count` the spec
+      declares is absent. Proven by plans/account/platform-accounts.yaml.
+    adapter: listShippoAccounts
+    tags: [account, pagination]
+    oas:
+      operationId: ListShippoAccounts
+    inputs: []
+    outputs:
+      - name: accounts
+        type: shippoAccount[]
+        elementFields:
+          - name: accountId
+            type: string
+          - name: email
+            type: string
+      - name: count
+        type: integer
+        display: Accounts
+        description: Derived by counting results; the response omits the count the spec declares
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Accounts this package created, which is always 0 — creating them is gated
+
+  # --- Carrier account writes -------------------------------------------------------------
+  updateCarrierAccount:
+    description: >-
+      Change a carrier account's settings (PUT /carrier_accounts/{id}, 200). `carrier` and
+      `account_id` together identify the account and cannot be changed, so on a Shippo-provided
+      test account the one thing worth writing is `active`. This package toggles it on
+      **couriersplease**, which docs/carrier-lane-coverage.md records as answering no lane at all —
+      so turning it off cannot change what any other plan is quoted. Cleanup turns it back on.
+      Proven by plans/account/carrier-writes.yaml.
+    adapter: updateCarrierAccount
+    tags: [account, carriers]
+    oas:
+      operationId: UpdateCarrierAccount
+    inputs:
+      - name: carrierAccountId
+        type: string
+        default:
+          from: listCarrierAccounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "couriersplease"
+      - name: carrier
+        type: string
+        default: couriersplease
+      - name: accountId
+        type: string
+        description: Shippo's own id for the account, which is echoed back rather than changed
+      - name: active
+        type: boolean
+        default: false
+    outputs:
+      - name: carrierAccountId
+        type: string
+        display: Account
+      - name: carrier
+        type: string
+      - name: active
+        type: boolean
+        display: Active
+      - name: test
+        type: boolean
+
+  getCarrierRegistrationStatus:
+    description: >-
+      Ask how far a carrier registration has got (GET /carrier_accounts/reg-status/, 200). **The
+      trailing slash is required** — without it Shippo answers 301 to the same path with one, as
+      GET /refunds/ does — and the spec declares the path without it. On an account whose carriers
+      are all Shippo-provided there is nothing registering, so the answer is an empty object:
+      the registration flow belongs to accounts you bring yourself.
+      Proven by plans/account/carrier-writes.yaml.
+    adapter: getCarrierRegistrationStatus
+    tags: [account, carriers]
+    oas:
+      operationId: GetCarrierRegistrationStatus
+    inputs:
+      - name: carrier
+        type: string
+        default: usps
+    outputs:
+      - name: status
+        type: string
+        display: Status
+        description: '"" on a Shippo-provided account, which has nothing to register'
+      - name: isEmpty
+        type: boolean
+        description: Whether the body came back as the empty object

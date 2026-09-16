@@ -1,8 +1,8 @@
 name: shippo
 description: >-
   The Shippo shipping API in test mode, validated against Shippo's own OpenAPI spec: carrier
-  accounts, addresses and their validation, and parcels so far, each proven against the live
-  test API
+  accounts, addresses, parcels, rating, labels and refunds, tracking, webhooks, and the account
+  and checkout settings — each proven against the live test API
 tags: [shipping, logistics, shippo, test-mode]
 graph: graph.yaml
 templates: templates/

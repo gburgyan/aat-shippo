@@ -1,0 +1,25 @@
+adapter: updateCarrierAccount
+protocol: http
+
+request:
+  method: PUT
+  path: /carrier_accounts/{{carrierAccountId}}
+  headers:
+    Content-Type: application/json
+  # carrier and account_id identify the account together and cannot be changed; they are sent
+  # because the schema requires them, and echoed back unaltered.
+  body: |-
+    {
+      "carrier": "{{carrier}}",
+      "account_id": "{{accountId}}",
+      "active": {{active}}
+    }
+
+response:
+  extract:
+    carrierAccountId: object_id
+    carrier: carrier
+    active:
+      path: active
+      default: false
+    test: test

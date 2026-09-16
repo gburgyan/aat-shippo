@@ -1,0 +1,107 @@
+# Saving a parcel shape to reuse: create, read, list, resize, and let cleanup delete it. Two things
+# came out of writing this that no documentation says.
+#
+# The create answers 201 where the spec declares 200 — and every endpoint under
+# /user-parcel-templates answers timestamps in Go's default format,
+# "2026-09-16 13:23:18.665011 +0000 UTC", where the rest of this API sends ISO 8601. It is not a
+# create-only slip: the read renders it the same way. What makes it unmistakable is
+# plans/account/live-rates.yaml, where **the same object, fetched through the default-parcel-
+# template setting, comes back as ISO 8601** — so one object has two renderings depending on which
+# endpoint you ask. createdIsIso is what these plans assert on, because a plan that asserted the
+# literal string would break the day Shippo fixes it.
+#
+# And a user parcel template carries neither `metadata` nor `test`, so the package-wide rails —
+# tag everything, refuse anything not in test mode — have nothing to attach to. The name is the
+# only field that can hold a tag, so an aat-shippo prefix stands in for the metadata.
+intent:
+  goal: listed
+  description: A parcel shape can be saved, read, resized and deleted, and its dates are not ISO 8601
+
+execution:
+  steps:
+    - id: create
+      node: createUserParcelTemplate
+      description: Save a 10x8x4 in box at 2 lb
+      values:
+        name: aat-shippo box
+      assertions:
+        mechanical:
+          # 201, where the spec declares 200.
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              name == "aat-shippo box" && length == "10" && width == "8" && height == "4" &&
+              distanceUnit == "in" && weight == "2" && weightUnit == "lb"
+          # The finding: this family answers Go's default time format, not ISO 8601.
+          - type: predicate
+            expr: createdIsIso == false
+          # There is no metadata and no test field to assert on — the name carries the tag.
+          - type: fieldAbsent
+            path: metadata
+            raw: true
+          - type: fieldAbsent
+            path: test
+            raw: true
+
+    - id: read
+      node: getUserParcelTemplate
+      dependsOn: [create]
+      description: The same object read back, rendered the same non-ISO way
+      values:
+        templateId: "{{create.templateId}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'templateId == "{{create.templateId}}" && name == "{{create.name}}"'
+          # Not a create-only slip: the read renders it the same way. The contrast is in
+          # plans/account/live-rates.yaml, where the same object comes back as ISO 8601.
+          - type: predicate
+            expr: createdIsIso == false
+          # Nothing here knows about the account's default parcel template; that lives under
+          # /live-rates/settings, and this flag never learns about it.
+          - type: predicate
+            expr: isDefault == false
+
+    - id: resize
+      node: updateUserParcelTemplate
+      dependsOn: [read]
+      description: Make it bigger, which replaces the whole template rather than patching it
+      values:
+        templateId: "{{create.templateId}}"
+        name: aat-shippo box resized
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              name == "aat-shippo box resized" && length == "12" && width == "9" &&
+              height == "6" && weight == "3"
+
+    - id: listed
+      node: listUserParcelTemplates
+      dependsOn: [resize]
+      isGoal: true
+      description: The account's templates, which include this one and are not paged
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: ourCount >= 1 && ourCount <= count
+          # Alone among this API's listings: no envelope counters and no cursors at all.
+          - type: fieldAbsent
+            path: count
+            raw: true
+          - type: fieldAbsent
+            path: next
+            raw: true
+          - type: fieldAbsent
+            path: previous
+            raw: true

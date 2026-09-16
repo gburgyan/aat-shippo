@@ -1,0 +1,19 @@
+adapter: getCarrierRegistrationStatus
+protocol: http
+
+request:
+  method: GET
+  # The trailing slash is required: without it Shippo answers 301 to this same path with one.
+  # The spec declares the path without it.
+  path: /carrier_accounts/reg-status/?carrier={{carrier}}
+
+response:
+  extract:
+    status:
+      path: status
+      default: ""
+  # A Shippo-provided carrier account has nothing registering, so the body is {} — there is no
+  # field to read, and "did it come back empty" is the only thing there is to assert.
+  transform: |
+    outputs.isEmpty = json_path("status") == nil and json_path("carrier_account") == nil
+    return outputs

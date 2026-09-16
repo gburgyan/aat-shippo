@@ -1,0 +1,30 @@
+adapter: listUserParcelTemplates
+protocol: http
+
+request:
+  method: GET
+  # No paging parameters exist for this listing, and the response carries no count or cursors.
+  path: /user-parcel-templates
+
+response:
+  extract:
+    templates:
+      # `results` is null, not [], when the account has none — so the default is what makes this
+      # readable at all on a clean account, which is exactly the state the guard runs in.
+      path: results
+      default: []
+      fields:
+        templateId: object_id
+        name: name
+  # `results` is null, not [], when the account has none — which the spec's array type disallows —
+  # so the count is derived rather than read, and a name prefix stands in for the metadata this
+  # object does not have.
+  transform: |
+    local rows = json_path("results") or {}
+    local ours = 0
+    for _, t in ipairs(rows) do
+      if type(t.name) == "string" and t.name:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+    end
+    outputs.count = #rows
+    outputs.ourCount = ours
+    return outputs

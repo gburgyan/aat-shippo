@@ -1,0 +1,106 @@
+# The one carrier-account write that is safe to make on a shared test account, and the one read
+# that goes with it.
+#
+# `carrier` and `account_id` together are a carrier account's unique key and cannot be changed, so
+# on a Shippo-provided account the only field worth writing is `active`. Turning a carrier off
+# changes what every other plan gets quoted, so this one is pinned to **couriersplease** — the
+# carrier docs/carrier-lane-coverage.md records as answering no lane at all, on any parcel, even
+# once you supply the company name it asks for. Switching it off cannot change a single rate
+# anywhere else in this package, and the graph's cleanup switches it back on regardless.
+#
+# The registration read is the safe half of the register family: GET /carrier_accounts/reg-status/
+# needs its trailing slash — without it Shippo answers 301 to the same path with one, exactly as
+# GET /refunds/ does, and the spec declares the path without it. On an account whose carriers are
+# all Shippo-provided there is nothing registering, so it answers an empty object. The rest of that
+# family needs real carrier credentials (UPS asks for fifteen fields including a recent invoice)
+# and is not driveable here.
+intent:
+  goal: reactivate
+  description: A carrier account can be deactivated and reactivated, and reg-status needs its slash
+
+execution:
+  steps:
+    - id: accounts
+      node: listCarrierAccounts
+      description: The account's carriers, to find the one that quotes nothing
+      values:
+        pageSize: 100
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: count == 15 && activeCount == 15
+
+    - id: before
+      node: getCarrierAccount
+      dependsOn: [accounts]
+      description: CouriersPlease as it stands, with the account id an update has to echo back
+      values:
+        carrierAccountId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "couriersplease"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'carrier == "couriersplease" && active == true && isShippoAccount == true'
+
+    - id: deactivate
+      node: updateCarrierAccount
+      dependsOn: [before]
+      description: Turn it off — safe, because it answers no lane on this account anyway
+      values:
+        carrierAccountId: "{{before.carrierAccountId}}"
+        carrier: couriersplease
+        accountId: "{{before.accountId}}"
+        active: false
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'active == false && test == true'
+          # The unique key came back exactly as it went out: neither half is changeable.
+          - type: predicate
+            expr: >-
+              carrierAccountId == "{{before.carrierAccountId}}" &&
+              carrier == "{{before.carrier}}"
+
+    - id: regStatus
+      node: getCarrierRegistrationStatus
+      dependsOn: [deactivate]
+      description: The registration read, which needs its trailing slash to answer at all
+      values:
+        carrier: usps
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # Nothing is registering: every carrier here is one Shippo provides.
+          - type: predicate
+            expr: isEmpty == true
+
+    - id: reactivate
+      node: updateCarrierAccount
+      dependsOn: [regStatus]
+      isGoal: true
+      description: Turn it back on, leaving the account as the plan found it
+      values:
+        carrierAccountId: "{{before.carrierAccountId}}"
+        carrier: couriersplease
+        accountId: "{{before.accountId}}"
+        active: true
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'active == true && carrierAccountId == "{{before.carrierAccountId}}"'

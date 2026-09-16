@@ -224,6 +224,93 @@ concepts:
     applies_to: [event, objectUpdated, nextPage]
     constraint: assert next is absent rather than sending parameters the spec does not declare
 
+  accountTagging:
+    description: >-
+      The package-wide rails do not reach the account features. A UserParcelTemplate, a
+      ServiceGroup, a ShippoAccount and a Webhook carry **neither `metadata` nor `test`**, so
+      neither "tag everything aat-shippo" nor "refuse anything whose test is false" has a field to
+      attach to. The substitute is a name: every such object this package creates is named with an
+      aat-shippo prefix, and the guards count by that prefix — by URL for a webhook, which has no
+      name either. Proven by plans/account/parcel-templates.yaml and
+      plans/account/service-groups.yaml.
+    applies_to: [name, url, ourCount]
+    constraint: name every account object aat-shippo…, since it has no metadata to tag
+
+  parcelTemplateDates:
+    description: >-
+      Every endpoint under /user-parcel-templates answers timestamps in Go's default time format,
+      `2026-09-16 13:23:18.665011 +0000 UTC`, where the rest of this API sends ISO 8601 — on the
+      create and on the read alike. The same object fetched through
+      GET /live-rates/settings/parcel-template comes back as ISO 8601, so one object has two
+      renderings depending on which endpoint is asked. Proven by
+      plans/account/parcel-templates.yaml and plans/account/live-rates.yaml.
+    applies_to: [createdIsIso]
+    constraint: assert the format, never the literal timestamp
+
+  serviceGroups:
+    description: >-
+      A service group is a checkout option: a name, a price, and the carrier service levels behind
+      it, as FLAT_RATE, LIVE_RATE or FREE_SHIPPING. Its service levels name a carrier account and
+      one of that account's service level tokens, which are visible only through the carrier
+      account listing with service_levels set. The update is PUT /service-groups with **no path
+      parameter** — the group is named by object_id in the body — while the delete does take one.
+      `flat_rate` is normalised: "5.00" comes back "5". Proven by plans/account/service-groups.yaml.
+    applies_to: [serviceGroupId, flatRate, serviceLevelToken]
+    constraint: read service level tokens from the carrier listing, never from a single account read
+
+  serviceGroupIsActive:
+    description: >-
+      `is_active` is required on a service group update, and **sending it as false is refused
+      exactly as if it were missing** — the same 400 and the same body,
+      `{"is_active": ["field is required"]}`. A service group therefore cannot be deactivated
+      through its own update endpoint; the field has one reachable value. Proven by
+      plans/account/service-groups.yaml.
+    applies_to: [isActive]
+    constraint: never expect a boolean false to survive a required-field check here
+
+  ratesAtCheckout:
+    description: >-
+      POST /live-rates is not a rate shop. It answers **the service groups configured on the
+      account** — each option's title is a group's name and its amount that group's price — so an
+      account with no service groups gets an empty list and no error. Omitting `parcel` uses the
+      account's default parcel template, which is the only thing that setting is for.
+      `address_from` is required in practice although the spec marks it optional. Proven by
+      plans/account/live-rates.yaml.
+    applies_to: [titles, firstAmount]
+    constraint: create a service group before expecting live rates to answer anything
+
+  platformAccounts:
+    description: >-
+      Shippo Managed Accounts can be listed on a test token and not created: POST answers 403 with
+      the bare JSON string "Unauthorized to create accounts". The spec declares **no DELETE**, so a
+      managed account is permanent and keyed to a real email address. This package therefore reads
+      and never writes. Proven by plans/account/platform-accounts.yaml.
+    applies_to: [accountId, ourCount]
+    constraint: never create a managed account; there is no way to remove one
+
+  errorEnvelopes:
+    description: >-
+      Shippo answers errors in three different shapes. Most endpoints send a flat
+      `{"detail": "..."}`; a field-level rejection sends a per-field map like
+      `{"is_active": ["field is required"]}`; /live-rates sends `{"message", "details"}`; and
+      POST /shippo-accounts sends a **bare JSON string**. A client that parses one shape will break
+      on the others. Proven by plans/account/service-groups.yaml,
+      plans/account/platform-accounts.yaml and plans/webhooks/lifecycle.yaml.
+    applies_to: [detail, message]
+    constraint: never assume an error body's shape from another endpoint's
+
+  carrierAccountWrites:
+    description: >-
+      `carrier` and `account_id` together form a carrier account's unique key and cannot be
+      changed, so on a Shippo-provided account the only useful write is `active`. The register
+      family needs real carrier credentials — UPS asks for fifteen fields including a recent
+      invoice — and its OAuth initiate is a browser redirect with no headless completion, so
+      neither is driveable here. GET /carrier_accounts/reg-status/ **requires its trailing slash**,
+      which the spec omits, and answers an empty object for an account with nothing registering.
+      Proven by plans/account/carrier-writes.yaml.
+    applies_to: [active, accountId, carrier]
+    constraint: only ever toggle a carrier that answers no lane, and always switch it back
+
 types:
   objectId:
     description: A Shippo object id

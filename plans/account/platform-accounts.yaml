@@ -1,0 +1,46 @@
+# Shippo Managed Accounts, read and never written. This plan is as much about what it does not do
+# as what it does.
+#
+# POST /shippo-accounts answers 403 on a standard test token — "Unauthorized to create accounts",
+# as a bare JSON string rather than Shippo's usual {"detail"} object, which makes three distinct
+# error envelopes in one API. And the spec offers **no DELETE at all**: a managed account, once
+# created, is permanent, and it is keyed by a real email address. Those two facts together are why
+# this package reads the listing and stops there. A create is one probe you cannot take back, so
+# the coverage is honest about its edge rather than pretending the operation is untestable.
+#
+# The listing has pagination of its own invention: `next` and `previous` come back as empty
+# strings where every other listing in this API sends null, and the `count` the spec declares is
+# simply absent.
+intent:
+  goal: accounts
+  description: Managed accounts can be listed, and this package creates none because it cannot undo one
+
+execution:
+  steps:
+    - id: accounts
+      node: listShippoAccounts
+      isGoal: true
+      description: Every managed account under this one, none of which this package made
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # The package never creates one, so it must never find one of its own.
+          - type: predicate
+            expr: ourCount == 0
+          # The count the spec declares is not in the body; this node derives its own.
+          - type: fieldAbsent
+            path: count
+            raw: true
+          # And the cursors are empty strings rather than the nulls every other listing sends.
+          - type: fieldEquals
+            path: next
+            value: ""
+            raw: true
+          - type: fieldEquals
+            path: previous
+            value: ""
+            raw: true

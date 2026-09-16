@@ -1,0 +1,24 @@
+adapter: listServiceGroups
+protocol: http
+
+request:
+  method: GET
+  path: /service-groups
+
+response:
+  extract:
+    # A bare array, so the elements are at the root rather than under `results`.
+    groups:
+      path: "@this"
+      fields:
+        serviceGroupId: object_id
+        name: name
+  transform: |
+    local rows = json_path("@this") or {}
+    local ours = 0
+    for _, g in ipairs(rows) do
+      if type(g.name) == "string" and g.name:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+    end
+    outputs.count = #rows
+    outputs.ourCount = ours
+    return outputs

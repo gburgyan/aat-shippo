@@ -1,0 +1,41 @@
+adapter: createServiceGroup
+protocol: http
+
+request:
+  method: POST
+  path: /service-groups
+  headers:
+    Content-Type: application/json
+  # service_levels is an array of {account_object_id, service_level_token}; the template flattens
+  # the one entry this package needs into two inputs.
+  body: |-
+    {
+      "name": "{{name}}",
+      "description": "{{description}}",
+      "type": "{{type}}",
+      "flat_rate": "{{flatRate}}",
+      "flat_rate_currency": "{{flatRateCurrency}}",
+      "service_levels": [
+        {
+          "account_object_id": "{{accountObjectId}}",
+          "service_level_token": "{{serviceLevelToken}}"
+        }
+      ]
+    }
+
+response:
+  extract:
+    serviceGroupId: object_id
+    name: name
+    type: type
+    # "5.00" goes out and "5" comes back.
+    flatRate:
+      path: flat_rate
+      default: ""
+    flatRateCurrency:
+      path: flat_rate_currency
+      default: ""
+    isActive:
+      path: is_active
+      default: false
+    serviceLevelCount: 'service_levels.#'

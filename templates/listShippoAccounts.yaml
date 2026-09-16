@@ -1,0 +1,26 @@
+adapter: listShippoAccounts
+protocol: http
+
+request:
+  method: GET
+  path: /shippo-accounts
+
+response:
+  extract:
+    accounts:
+      path: results
+      fields:
+        accountId: object_id
+        email: email
+  # The count the spec declares is absent from the body, so it is derived. Accounts this package
+  # created are always none: POST answers 403 on a test token, and there is no DELETE if it did not.
+  transform: |
+    local rows = json_path("results") or {}
+    local ours = 0
+    for _, a in ipairs(rows) do
+      local name = a.company_name
+      if type(name) == "string" and name:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+    end
+    outputs.count = #rows
+    outputs.ourCount = ours
+    return outputs

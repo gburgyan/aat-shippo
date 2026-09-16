@@ -1,0 +1,60 @@
+adapter: createLiveRate
+protocol: http
+
+request:
+  method: POST
+  path: /live-rates
+  headers:
+    Content-Type: application/json
+  # address_from is sent although the spec marks it optional: without it the request is refused.
+  # No `parcel` is sent at all, which is what makes the account's default parcel template matter.
+  body: |-
+    {
+      "address_from": {
+        "name": "aat-shippo shipper",
+        "street1": "{{addressFromStreet1}}",
+        "city": "{{addressFromCity}}",
+        "state": "{{addressFromState}}",
+        "zip": "{{addressFromZip}}",
+        "country": "{{addressFromCountry}}"
+      },
+      "address_to": {
+        "name": "aat-shippo recipient",
+        "street1": "{{addressToStreet1}}",
+        "city": "{{addressToCity}}",
+        "state": "{{addressToState}}",
+        "zip": "{{addressToZip}}",
+        "country": "{{addressToCountry}}"
+      },
+      "line_items": [
+        {
+          "title": "{{itemTitle}}",
+          "quantity": {{itemQuantity}},
+          "total_price": "{{itemPrice}}",
+          "currency": "{{itemCurrency}}",
+          "weight": "{{itemWeight}}",
+          "weight_unit": "{{itemWeightUnit}}"
+        }
+      ]
+    }
+
+response:
+  extract:
+    count: 'results.#'
+    firstAmount:
+      path: results.0.amount
+      default: ""
+    firstCurrency:
+      path: results.0.currency
+      default: ""
+  # Each title is a service group's name, not a carrier service: this endpoint answers with what
+  # you configured to show a customer, so an account with no service groups gets nothing back.
+  transform: |
+    local rows = json_path("results") or {}
+    local titles = {}
+    for _, r in ipairs(rows) do
+      table.insert(titles, tostring(r.title))
+    end
+    table.sort(titles)
+    outputs.titles = table.concat(titles, ",") .. ""
+    return outputs

@@ -1,0 +1,50 @@
+# Nothing this package saved on the account is still there. Parcel templates and service groups are
+# deletable, so every plan that makes one is paired with a cleanup that removes it — and this guard
+# is what proves the pairing actually fired, across every plan in the batch.
+#
+# Like plans/zz-guard/no-stray-webhooks.yaml, and unlike the two label guards, its job is to find
+# nothing: it asserts ourCount == 0 rather than ourCount > 0. What stops it being vacuous is that
+# neither listing pages at all — one read is the whole of each — so there is nowhere for a leftover
+# to hide.
+#
+# Both objects are recognised by an aat-shippo name prefix rather than by metadata, because neither
+# type has a metadata field to carry one.
+#
+# The name sorts it last in a batch, after every plan that might create one.
+intent:
+  goal: groups
+  description: No parcel template or service group this package saved is still on the account
+
+execution:
+  steps:
+    - id: templates
+      node: listUserParcelTemplates
+      description: The account's saved parcel shapes, of which none may be this package's
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: ourCount == 0
+          # Nothing paginated past: this listing has no cursors and takes no parameters.
+          - type: fieldAbsent
+            path: next
+            raw: true
+
+    - id: groups
+      node: listServiceGroups
+      dependsOn: [templates]
+      isGoal: true
+      description: The account's checkout options, of which none may be this package's
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: ourCount == 0

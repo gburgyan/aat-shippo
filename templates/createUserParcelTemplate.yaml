@@ -1,0 +1,39 @@
+adapter: createUserParcelTemplate
+protocol: http
+
+request:
+  method: POST
+  path: /user-parcel-templates
+  headers:
+    Content-Type: application/json
+  # The dimension form of the body's oneOf: a name and a full set of measurements. The other form
+  # takes a carrier `template` token instead and allows no dimensions at all.
+  body: |-
+    {
+      "name": "{{name}}",
+      "length": "{{length}}",
+      "width": "{{width}}",
+      "height": "{{height}}",
+      "distance_unit": "{{distanceUnit}}",
+      "weight": "{{weight}}",
+      "weight_unit": "{{weightUnit}}"
+    }
+
+response:
+  extract:
+    templateId: object_id
+    name: name
+    length: length
+    width: width
+    height: height
+    distanceUnit: distance_unit
+    weight: weight
+    weightUnit: weight_unit
+  # This endpoint alone answers a Go-formatted timestamp — "2026-09-16 13:23:18.665011 +0000 UTC"
+  # — where the rest of the API sends ISO 8601. The check is for the T and the trailing Z rather
+  # than a full parse, which is enough to tell the two apart and says what it means.
+  transform: |
+    local created = json_path("object_created")
+    outputs.createdIsIso = type(created) == "string"
+      and string.match(created, "^%d%d%d%d%-%d%d%-%d%dT") ~= nil
+    return outputs

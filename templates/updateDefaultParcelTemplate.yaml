@@ -1,0 +1,22 @@
+adapter: updateDefaultParcelTemplate
+protocol: http
+
+request:
+  method: PUT
+  # No id in the path: there is only one such setting on an account.
+  path: /live-rates/settings/parcel-template
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "object_id": "{{templateId}}"
+    }
+
+response:
+  # A single-key {result} envelope wrapping the whole template — a shape nothing else here uses.
+  extract:
+    templateId: result.object_id
+    name: result.name
+    length: result.length
+    width: result.width
+    height: result.height

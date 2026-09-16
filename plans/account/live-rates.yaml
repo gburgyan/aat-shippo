@@ -1,0 +1,115 @@
+# Rates at checkout, which is a different product from rating a shipment and worth not confusing
+# with it. /live-rates does not shop carriers: it answers **the service groups you configured**,
+# each one's `title` a group name and each `amount` its configured price. An account with no
+# service groups gets an empty list back and no error, which is a confusing five minutes if you
+# expected carrier services.
+#
+# So the chain has an order, and this plan is that order end to end: save a parcel shape, make it
+# the account's default, create an option to offer, then ask for live rates **without naming a
+# parcel at all** — which is the only thing that makes the default setting worth having.
+#
+# Two findings ride along:
+#   - `address_from` is required in practice though the spec marks it optional, and the refusal
+#     comes back in a third error shape, {"message", "details"}, rather than Shippo's flat
+#     {"detail"}.
+#   - the default-parcel-template setting is the one endpoint that renders a user parcel template's
+#     timestamps as ISO 8601; the /user-parcel-templates endpoints render the same object in Go's
+#     default format (plans/account/parcel-templates.yaml).
+#
+# Cleanup clears the default setting and deletes both objects, in that order.
+intent:
+  goal: rates
+  description: Live rates answer service groups, sized by the account's default parcel template
+
+execution:
+  steps:
+    - id: template
+      node: createUserParcelTemplate
+      description: A parcel shape to make the account's default
+      values:
+        name: aat-shippo default box
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: createdIsIso == false
+
+    - id: makeDefault
+      node: updateDefaultParcelTemplate
+      dependsOn: [template]
+      description: Point the account's live-rate setting at it
+      values:
+        templateId: "{{template.templateId}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'templateId == "{{template.templateId}}" && name == "{{template.name}}"'
+          # The same object the create just answered in Go's time format comes back here as ISO
+          # 8601. One object, two renderings, decided by which endpoint you ask.
+          - type: fieldExists
+            path: result.object_created
+            raw: true
+
+    - id: confirmDefault
+      node: getDefaultParcelTemplate
+      dependsOn: [makeDefault]
+      description: Read the setting back
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'isSet == true && templateId == "{{template.templateId}}"'
+
+    - id: accounts
+      node: listCarrierAccounts
+      description: The service levels a group can be built from
+      values:
+        serviceLevels: true
+        pageSize: 100
+      retry:
+        max: 3
+        on: [429]
+
+    - id: group
+      node: createServiceGroup
+      dependsOn: [accounts, confirmDefault]
+      description: The option to offer the customer, without which live rates answer nothing
+      values:
+        name: aat-shippo checkout option
+        flatRate: "7.25"
+        accountObjectId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: 'flatRate == "7.25" && isActive == true'
+
+    - id: rates
+      node: createLiveRate
+      dependsOn: [group]
+      isGoal: true
+      description: What to show at checkout, with no parcel named, so the default is used
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # The option offered is the service group, by name and by price — not a carrier service.
+          - type: predicate
+            expr: >-
+              count == 1 && titles == "aat-shippo checkout option" &&
+              firstAmount == "7.25" && firstCurrency == "USD"
+          # This listing pages with empty strings where the rest of the API sends null.
+          - type: fieldEquals
+            path: next
+            value: ""
+            raw: true
