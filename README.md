@@ -1,5 +1,7 @@
 # aat-shippo
 
+[![nightly run](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml/badge.svg)](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml)
+
 The [Shippo](https://goshippo.com) shipping API in test mode, as an [AAT](https://github.com/gburgyan/aat)
 project. AAT is a command-line tool that models an API as a graph and runs long, multi-step test plans
 against it: here a graph describes each operation, plans chain them, and every plan runs against
@@ -11,8 +13,6 @@ account and checkout settings are done: 46 of Shippo's 70 operations, over 47 no
 plans that pass together in about two and a half minutes, with 9 layers in two matrices: a lane
 crossed with a parcel, and Shippo's six deterministic tracking fixtures. Customs, batches,
 manifests, pickups and orders are [not covered yet](#not-covered-yet).
-
-[![nightly run](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml/badge.svg)](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml)
 
 ```text
 $ aat run plan labels/buy-and-refund
