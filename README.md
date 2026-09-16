@@ -114,7 +114,7 @@ aat run plan addresses/validate        # watch Shippo correct a misspelled addre
 aat run plan tracking/fixtures         # a tracking history, free and deterministic
 aat run batch --env test-ci            # all 28 plans, paced, with the guards last
 aat run batch matrix --env test-ci \
-  --layer-group parcel-letter,parcel-large,parcel-heavy   # the matrix below
+  --layer-group parcel-letter,parcel-large,parcel-heavy --parallel 4   # the matrix below
 aat run show latest                    # what the last run sent and got back
 aat web view latest                    # open it in the browser
 ```
@@ -206,12 +206,12 @@ inputs:
 
 ```bash
 aat run batch matrix --env test-ci \
-  --layer-group parcel-letter,parcel-large,parcel-heavy
+  --layer-group parcel-letter,parcel-large,parcel-heavy --parallel 4
 ```
 
-![Eight runs from two plan files, crossed with three parcel layers plus the base](docs/images/demo-matrix.gif)
+![Four runs filling their progress bars at once while finished ones scroll up past them, ending at 8/8 passed](docs/images/demo-matrix.gif)
 
-Two plan files. One command. Eight runs, deduplicated, with a matrix view:
+Two plan files. One command. Eight runs, four at a time, with a matrix view:
 
 ![The batch as a matrix: two tests down the side, four parcel permutations across the top, all passed](docs/images/ui-matrix.png)
 

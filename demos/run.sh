@@ -74,6 +74,8 @@ check "$root/_output/runs/$label_run/archive.json" \
   '.result.outcome == "passed" and (.steps | length) == 11' "label"
 
 step "Recording: matrix"
+# --parallel 4 inside the tape: the bars are the recording. The archive is the same eight runs
+# either way, so the check below does not change.
 "$vhs" "$demos/matrix.tape"
 matrix_batch=$(newest batch)
 check "$root/_output/runs/$matrix_batch/batch.json" \
