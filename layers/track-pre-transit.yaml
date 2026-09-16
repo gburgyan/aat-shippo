@@ -1,0 +1,7 @@
+name: track-pre-transit
+description: >-
+  The carrier has the electronic shipment information and nothing has moved yet. One history
+  entry, and no location on it — which the spec declares non-nullable.
+selectionHint: A shipment that has not moved yet
+inputs:
+  getTrack.trackingNumber: SHIPPO_PRE_TRANSIT

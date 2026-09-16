@@ -1,0 +1,30 @@
+adapter: updateWebhook
+protocol: http
+
+request:
+  method: PUT
+  path: /webhooks/{{webhookId}}
+  headers:
+    Content-Type: application/json
+  # The body is a whole webhook, not a patch: every field is sent every time.
+  body: |-
+    {
+      "event": "{{event}}",
+      "url": "{{url}}",
+      "active": {{active}},
+      "is_test": {{isTest}}
+    }
+
+response:
+  extract:
+    webhookId: object_id
+    event: event
+    url: url
+    active:
+      path: active
+      default: false
+    isTest:
+      path: is_test
+      default: false
+    # Answered as the creation time: an update does not move it.
+    objectUpdated: object_updated

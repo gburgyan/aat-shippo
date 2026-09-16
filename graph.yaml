@@ -1211,3 +1211,283 @@ nodes:
       - name: nextPage
         type: integer
         optional: true
+
+  # --- Tracking ---------------------------------------------------------------------------
+  createTrack:
+    description: >-
+      Register a tracking number so Shippo watches it and fires `track_updated` webhooks
+      (POST /tracks, **200**, not the 201 a create usually answers). The response is a full Track,
+      the same shape GetTrack returns, so registering and reading tell you the same thing — the
+      difference is that registering subscribes. Registering a number already registered answers
+      200 again rather than a conflict. Proven by plans/tracking/register.yaml.
+    adapter: createTrack
+    tags: [tracking]
+    oas:
+      operationId: CreateTrack
+    inputs:
+      - name: carrier
+        type: string
+        default: shippo
+        description: The carrier token; `shippo` serves the deterministic test fixtures
+      - name: trackingNumber
+        type: string
+        default: SHIPPO_TRANSIT
+      - name: metadata
+        type: string
+        optional: true
+        description: >-
+          Up to 100 characters. A fixture ignores it and answers Shippo's own
+          "Shippo test tracking", so a tracked fixture cannot carry this package's tag.
+    outputs:
+      - name: carrier
+        type: string
+      - name: trackingNumber
+        type: string
+        display: Tracking
+      - name: status
+        type: string
+        display: Status
+        description: UNKNOWN, PRE_TRANSIT, TRANSIT, DELIVERED, RETURNED, or FAILURE
+      - name: statusDetails
+        type: string
+      - name: historyCount
+        type: integer
+        display: History
+      - name: metadata
+        type: string
+
+  getTrack:
+    description: >-
+      Read a tracking status by carrier and tracking number
+      (GET /tracks/{Carrier}/{TrackingNumber}, 200). Carrier `shippo` with one of six
+      `SHIPPO_*` numbers returns a fixed, deterministic history that never flakes and costs
+      nothing, which is what the tracking layers cross. The six are a **cumulative chain**, not
+      six independent states: UNKNOWN(1) → TRANSIT(2) → FAILURE(3) → DELIVERED(4) → RETURNED(5),
+      with PRE_TRANSIT its own single entry. `eta` and `original_eta` are relative to now and move
+      on every call, so nothing asserts them. Proven by plans/tracking/fixtures.yaml.
+    adapter: getTrack
+    tags: [tracking]
+    oas:
+      operationId: GetTrack
+    inputs:
+      - name: carrier
+        type: string
+        default: shippo
+        description: The carrier token; `shippo` serves the test fixtures
+      - name: trackingNumber
+        type: string
+        default: SHIPPO_TRANSIT
+        description: >-
+          SHIPPO_PRE_TRANSIT, SHIPPO_TRANSIT, SHIPPO_DELIVERED, SHIPPO_RETURNED, SHIPPO_FAILURE
+          or SHIPPO_UNKNOWN for a fixture, or a real carrier number from a bought label
+    outputs:
+      - name: carrier
+        type: string
+      - name: trackingNumber
+        type: string
+        display: Tracking
+      - name: status
+        type: string
+        display: Status
+      - name: statusDetails
+        type: string
+      - name: historyCount
+        type: integer
+        display: History
+        description: Entries in tracking_history; a deterministic count for each fixture
+      - name: historyStatuses
+        type: string
+        description: The history's statuses in order, comma-joined — the chain the fixture walked
+      - name: lastHistoryStatus
+        type: string
+        description: The final history entry's status, which is what tracking_status reports now
+      - name: hasLocation
+        type: boolean
+        description: >-
+          Whether tracking_status.location came back. Null on PRE_TRANSIT and UNKNOWN, set on the
+          rest; the spec declares it non-nullable either way.
+      - name: serviceToken
+        type: string
+      - name: transactionId
+        type: string
+        description: >-
+          The owning transaction, visible only to its owner. Null on a fixture, though the spec
+          declares it a string.
+      - name: metadata
+        type: string
+      - name: messageCount
+        type: integer
+
+  # --- Webhooks ---------------------------------------------------------------------------
+  createWebhook:
+    description: >-
+      Register a webhook endpoint (POST /webhooks, 201). Shippo asks for nothing but a URL — there
+      is no verification handshake, no challenge, and no ping — so the whole lifecycle is drivable
+      without a receiver, which is how this package tests it. **No secret is issued**: the Webhook
+      object carries no signing key, so there is nothing here to redact. `event: all` is stored and
+      **read back as `*`**, a value the spec's own enum does not list. Cleanup deletes it.
+      Proven by plans/webhooks/lifecycle.yaml.
+    adapter: createWebhook
+    tags: [webhooks]
+    oas:
+      operationId: createWebhook
+    inputs:
+      - name: event
+        type: string
+        default: track_updated
+        description: >-
+          transaction_created, transaction_updated, track_updated, batch_created, batch_purchased,
+          or all — which comes back as `*`
+      - name: url
+        type: string
+        description: >-
+          Any https URL; Shippo never calls it during a test run. The plans pass
+          {{env.webhookUrl}}, whose path carries aat-shippo — the only tag a webhook can have.
+      - name: active
+        type: boolean
+        default: true
+      - name: isTest
+        type: boolean
+        default: true
+    outputs:
+      - name: webhookId
+        type: string
+        display: Webhook
+      - name: event
+        type: string
+        display: Event
+      - name: url
+        type: string
+      - name: active
+        type: boolean
+      - name: isTest
+        type: boolean
+      - name: objectUpdated
+        type: string
+        description: Set on create, and **not bumped by an update** — see plans/webhooks/lifecycle.yaml
+    cleanup:
+      node: deleteWebhook
+
+  getWebhook:
+    description: >-
+      Read one webhook by its object id (GET /webhooks/{webhookId}, 200). After a delete the same
+      read answers 404 with Shippo's flat `{"detail": "Not found."}`.
+      Proven by plans/webhooks/lifecycle.yaml.
+    adapter: getWebhook
+    tags: [webhooks]
+    oas:
+      operationId: getWebhook
+    inputs:
+      - name: webhookId
+        type: string
+        default:
+          from: createWebhook.webhookId
+    outputs:
+      - name: webhookId
+        type: string
+        display: Webhook
+      - name: event
+        type: string
+      - name: url
+        type: string
+      - name: active
+        type: boolean
+      - name: isTest
+        type: boolean
+      - name: objectUpdated
+        type: string
+
+  updateWebhook:
+    description: >-
+      Replace a webhook's settings (PUT /webhooks/{webhookId}, 200). The body is a whole webhook,
+      not a patch. **`object_updated` does not move** — the object answers with the timestamp it
+      was created at, so an update leaves no trace in the object itself.
+      Proven by plans/webhooks/lifecycle.yaml.
+    adapter: updateWebhook
+    tags: [webhooks]
+    oas:
+      operationId: updateWebhook
+    inputs:
+      - name: webhookId
+        type: string
+        default:
+          from: createWebhook.webhookId
+      - name: event
+        type: string
+        default: track_updated
+      - name: url
+        type: string
+        description: The plans pass {{env.webhookUrl}}
+      - name: active
+        type: boolean
+        default: false
+      - name: isTest
+        type: boolean
+        default: true
+    outputs:
+      - name: webhookId
+        type: string
+        display: Webhook
+      - name: event
+        type: string
+      - name: url
+        type: string
+      - name: active
+        type: boolean
+        display: Active
+      - name: isTest
+        type: boolean
+      - name: objectUpdated
+        type: string
+
+  listWebhooks:
+    description: >-
+      List the account's webhooks (GET /webhooks, 200). The spec declares **no `page` or `results`
+      parameters** for this listing, alone with GET /refunds/, so this node sends none and asserts
+      the response carries no `next` — a guard that cannot page must prove it did not need to. (The
+      API does honour both parameters if you send them; the spec is what is wrong, and sending an
+      undeclared parameter would be the caller's fault rather than the spec's.) A Webhook carries no
+      `metadata`, so a webhook is recognised as this package's by `aat-shippo` in its URL.
+      Proven by plans/webhooks/lifecycle.yaml and plans/zz-guard/no-stray-webhooks.yaml.
+    adapter: listWebhooks
+    tags: [webhooks, pagination, guard]
+    oas:
+      operationId: listWebhooks
+    inputs: []
+    outputs:
+      - name: webhooks
+        type: webhook[]
+        elementFields:
+          - name: webhookId
+            type: string
+          - name: event
+            type: string
+          - name: url
+            type: string
+      - name: count
+        type: integer
+        display: Webhooks
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Webhooks whose URL carries aat-shippo
+      - name: liveCount
+        type: integer
+        description: Webhooks not marked is_test; 0 for anything this package registers
+
+  deleteWebhook:
+    description: >-
+      Delete a webhook (DELETE /webhooks/{webhookId}, **204** with no body). Webhooks are the one
+      thing this package creates that Shippo lets it destroy, so this is real cleanup rather than
+      the refund every label needs. Paired to createWebhook in the graph.
+      Proven by plans/webhooks/lifecycle.yaml.
+    adapter: deleteWebhook
+    tags: [webhooks, cleanup]
+    oas:
+      operationId: deleteWebhook
+    inputs:
+      - name: webhookId
+        type: string
+        default:
+          from: createWebhook.webhookId
+    outputs: []

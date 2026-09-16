@@ -1,0 +1,7 @@
+name: track-returned
+description: >-
+  Returned to the sender, and the longest chain at five entries: UNKNOWN, TRANSIT, FAILURE,
+  DELIVERED, RETURNED. A return is modelled as something that happens after a delivery.
+selectionHint: A shipment returned to the sender
+inputs:
+  getTrack.trackingNumber: SHIPPO_RETURNED

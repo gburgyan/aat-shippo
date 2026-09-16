@@ -1,0 +1,40 @@
+# One tracking read, saying nothing about which shipment — so every track- layer reaches it and
+# one command walks all six of Shippo's deterministic fixtures:
+#
+#   aat run batch tracking --layer-group track-pre-transit,track-transit,track-delivered,\
+#     track-returned,track-failure,track-unknown
+#
+# Nothing here is bought, nothing is created, and the answers never move: this is the cheapest
+# layer axis in the package and the only one that cannot flake. The assertions are deliberately
+# shape-level rather than status-level, because the layer chooses the status — what every fixture
+# must share is that it is a real track with a history, a service level, and Shippo's own metadata.
+intent:
+  goal: track
+  description: Every SHIPPO_ fixture answers a full, stable tracking history
+
+execution:
+  steps:
+    - id: track
+      node: getTrack
+      isGoal: true
+      description: Read whichever fixture the layer pinned, or SHIPPO_TRANSIT for the base run
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              carrier == "shippo" && historyCount >= 1 &&
+              serviceToken == "shippo_priority" && messageCount == 0
+          # Every fixture's last history entry is the status it reports now, and the status is
+          # one of the six the spec's enum allows.
+          - type: predicate
+            expr: 'lastHistoryStatus == status'
+          - type: predicate
+            expr: 'status in ["UNKNOWN", "PRE_TRANSIT", "TRANSIT", "DELIVERED", "RETURNED", "FAILURE"]'
+          # Shippo stamps its own metadata on a fixture, so a tracked fixture cannot carry ours.
+          - type: predicate
+            expr: 'metadata == "Shippo test tracking"'
+          # transaction is null on a fixture — nobody owns it — though the spec types it a string.
+          - type: predicate
+            expr: 'transactionId == ""'

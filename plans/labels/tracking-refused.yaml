@@ -1,0 +1,139 @@
+# The most expensive sentence in this package to learn the hard way: **in test mode you cannot
+# track a label you just bought.** Shippo issues a real, well-formed USPS tracking number on a test
+# label, and then refuses to track it — not because the number is unknown, but because the carrier
+# is not `shippo`:
+#
+#   GET /tracks/usps/9334620845500001485285
+#   400  {"detail": "usps is not a valid test tracking carrier. Please use 'shippo'"}
+#
+# Every real carrier answers that, word for word, with its own name in it. Ask `shippo` for a
+# number that is not one of the six fixtures and the refusal changes to a different one, about the
+# number rather than the carrier. So test-mode tracking is a closed fixture system with no way in
+# from the labels you buy — which is why plans/tracking/fixtures.yaml exists and why it cannot
+# start from a purchase.
+#
+# This plan buys a label to prove it, because the whole point is that the number is genuinely
+# Shippo's own and still refused. It lives with the other purchases rather than in plans/tracking/,
+# which stays free and deterministic. The graph's createTransaction -> createRefund pairing refunds it.
+intent:
+  goal: track
+  description: A label bought in test mode issues a tracking number that test mode will not track
+
+execution:
+  steps:
+    - id: from
+      node: createAddress
+      description: The origin
+      values:
+        name: AAT Shipper
+        street1: 215 Clayton St
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "4155551234"
+        email: shipper@example.com
+
+    - id: to
+      node: createAddress
+      description: The destination
+      values:
+        name: AAT Recipient
+        street1: 233 E Wacker Dr
+        city: Chicago
+        state: IL
+        zip: "60601"
+        country: US
+        phone: "3125551234"
+        email: recipient@example.com
+
+    - id: parcel
+      node: createParcel
+      description: An everyday box
+
+    - id: shipment
+      node: createShipment
+      dependsOn: [from, to, parcel]
+      description: Rate it, pinned to USPS, which is the only carrier this account can buy from
+      values:
+        addressFrom: "{{from.addressId}}"
+        addressTo: "{{to.addressId}}"
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        carrierAccounts:
+          value: []
+        async: false
+
+    - id: rates
+      node: listShipmentRates
+      dependsOn: [shipment]
+      description: The shipment's rates, read on their own so one can be picked by carrier
+      values:
+        shipmentId: "{{shipment.shipmentId}}"
+      retry:
+        max: 3
+        on: [429]
+
+    - id: label
+      node: createTransaction
+      dependsOn: [rates]
+      # USPS is pinned for the same reason every label plan here pins it: the account can rate
+      # with UPS but not buy from it.
+      description: Buy a USPS rate as a PNG label
+      values:
+        rateId:
+          from: rates.rates
+          select:
+            strategy: match
+            field: rateId
+            filter: provider == "USPS"
+        labelFileType: PNG
+        async: false
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: 'status == "SUCCESS" && test == true && trackingNumber != ""'
+
+    - id: notANumber
+      node: getTrack
+      dependsOn: [label]
+      expectFailure:
+        status: [400]
+        description: Test mode tracks fixtures only, so an invented number is refused
+      description: The `shippo` carrier with a number that is not one of the six fixtures
+      values:
+        carrier: shippo
+        trackingNumber: NOT_A_FIXTURE
+      assertions:
+        mechanical:
+          - type: status
+            expect: 400
+          # The refusal names the number, and points at the docs that list the six.
+          - type: fieldEquals
+            path: detail
+            value: "NOT_A_FIXTURE is not a valid test tracking number. Please use the sample tracking numbers provided in the Shippo API docs: 'https://goshippo.com/docs/tracking'"
+            raw: true
+
+    - id: track
+      node: getTrack
+      dependsOn: [notANumber]
+      isGoal: true
+      expectFailure:
+        status: [400]
+        description: A real carrier cannot be tracked in test mode, whatever the number
+      description: The number this run's own label was issued, which test mode will not track
+      values:
+        carrier: usps
+        trackingNumber: "{{label.trackingNumber}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 400
+          # Not "unknown number" — the carrier itself is the thing test mode refuses, even for a
+          # number Shippo issued a second ago.
+          - type: fieldEquals
+            path: detail
+            value: "usps is not a valid test tracking carrier. Please use 'shippo'"
+            raw: true

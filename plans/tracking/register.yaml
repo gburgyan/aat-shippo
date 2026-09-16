@@ -1,0 +1,68 @@
+# Registering a tracking number, which is how you ask Shippo to watch one and fire track_updated
+# webhooks at you. Two things worth knowing came out of writing this:
+#
+#   - POST /tracks answers 200, not the 201 every other create in this API answers.
+#   - Registering is idempotent: the same number registered twice answers 200 again, with the same
+#     history, rather than a 409.
+#
+# The registration and the plain read return the same Track shape, so the second step proves the
+# two agree rather than re-proving the shape.
+intent:
+  goal: readBack
+  description: A tracking number can be registered, and reads back the same as registering it
+
+execution:
+  steps:
+    - id: register
+      node: createTrack
+      description: Register the delivered fixture, which has the longest settled history
+      values:
+        carrier: shippo
+        trackingNumber: SHIPPO_DELIVERED
+      assertions:
+        mechanical:
+          # Not 201: a create that answers 200.
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              carrier == "shippo" && trackingNumber == "SHIPPO_DELIVERED" &&
+              status == "DELIVERED" && historyCount == 4
+
+    - id: again
+      node: createTrack
+      dependsOn: [register]
+      description: The same registration a second time, which is accepted rather than refused
+      values:
+        carrier: shippo
+        trackingNumber: SHIPPO_DELIVERED
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'status == "{{register.status}}" && historyCount == 4'
+
+    - id: readBack
+      node: getTrack
+      dependsOn: [again]
+      isGoal: true
+      description: The plain read, which agrees with what registering returned
+      values:
+        carrier: shippo
+        trackingNumber: SHIPPO_DELIVERED
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              status == "{{register.status}}" &&
+              statusDetails == "{{register.statusDetails}}" &&
+              historyCount == "{{register.historyCount}}"
+          # The chain Shippo's own delivered fixture walks, in order. A delivery that passed
+          # through a failure is odd, and it is what the API says.
+          - type: predicate
+            expr: 'historyStatuses == "UNKNOWN,TRANSIT,FAILURE,DELIVERED"'
+          - type: predicate
+            expr: hasLocation == true

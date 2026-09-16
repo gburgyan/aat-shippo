@@ -1,0 +1,7 @@
+name: track-delivered
+description: >-
+  Delivered. Four history entries — UNKNOWN, TRANSIT, FAILURE, DELIVERED — so Shippo's own
+  happy path walks through a failure on its way to the door.
+selectionHint: A delivered shipment
+inputs:
+  getTrack.trackingNumber: SHIPPO_DELIVERED

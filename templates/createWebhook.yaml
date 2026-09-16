@@ -1,0 +1,29 @@
+adapter: createWebhook
+protocol: http
+
+request:
+  method: POST
+  path: /webhooks
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "event": "{{event}}",
+      "url": "{{url}}",
+      "active": {{active}},
+      "is_test": {{isTest}}
+    }
+
+response:
+  extract:
+    webhookId: object_id
+    # `all` is stored and read back as `*`, which the spec's own enum does not list.
+    event: event
+    url: url
+    active:
+      path: active
+      default: false
+    isTest:
+      path: is_test
+      default: false
+    objectUpdated: object_updated

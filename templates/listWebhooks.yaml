@@ -1,0 +1,32 @@
+adapter: listWebhooks
+protocol: http
+
+request:
+  method: GET
+  # The spec declares no parameters for this listing, so none are sent. The API would honour
+  # `results` and `page`, but sending what the spec does not declare is the caller's bug, not
+  # Shippo's — the plan asserts `next` is absent instead, so a single read is provably enough.
+  path: /webhooks
+
+response:
+  extract:
+    webhooks:
+      path: results
+      fields:
+        webhookId: object_id
+        event: event
+        url: url
+    count: 'results.#'
+  # A Webhook carries no metadata, so the URL is the only tag it can have: this package's webhooks
+  # are the ones whose URL path carries aat-shippo. A webhook has no `test` field either, so
+  # is_test false is what counts as live here.
+  transform: |
+    local rows = json_path("results") or {}
+    local ours, live = 0, 0
+    for _, w in ipairs(rows) do
+      if type(w.url) == "string" and string.find(w.url, "aat%-shippo") then ours = ours + 1 end
+      if w.is_test == false then live = live + 1 end
+    end
+    outputs.ourCount = ours
+    outputs.liveCount = live
+    return outputs

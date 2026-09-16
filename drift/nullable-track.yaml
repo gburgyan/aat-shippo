@@ -1,0 +1,60 @@
+# The tracking half of the same finding drift/nullable-pagination.yaml pins on listings: Shippo's
+# spec marks nothing nullable, and the API sends null constantly. Run it both ways:
+#
+#   aat run plan drift/nullable-track.yaml                    # passes; findings are recorded
+#   aat run plan drift/nullable-track.yaml --env test-strict  # fails, on Shippo's own spec
+#
+# Under test-strict a single read of a stock fixture fails five times over, in the spec's own words:
+#
+#   $.transaction:                        got null, want string
+#   $.tracking_status.substatus:          got null, want object
+#   $.tracking_history[0].location:       got null, want object
+#   $.tracking_history[0].substatus:      got null, want object
+#   $.tracking_history[1].substatus:      got null, want object
+#
+# And there is a sixth problem the other direction: the API always sends `test`, and the spec's
+# Track schema declares no such property, so the graph cannot carry it as an output at all. This
+# plan reads it off the wire instead, which is the only place it exists.
+#
+# This plan sits outside plans/, so a batch never runs it. Its assertions describe the behaviour
+# rather than the failure, so it stays true under either environment.
+intent:
+  goal: track
+  description: A track sends null where the spec says string or object, and a field the spec omits
+
+execution:
+  steps:
+    - id: track
+      node: getTrack
+      isGoal: true
+      description: The transit fixture, whose nulls are the ones the spec disallows
+      values:
+        carrier: shippo
+        trackingNumber: SHIPPO_TRANSIT
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'status == "TRANSIT" && historyCount == 2'
+          # Declared `type: string`; sent as null, because nobody owns a fixture.
+          - type: fieldAbsent
+            path: transaction
+            raw: true
+          # Declared a substatus object on every entry; sent as null on all of them.
+          - type: fieldAbsent
+            path: tracking_status.substatus
+            raw: true
+          - type: fieldAbsent
+            path: tracking_history.0.substatus
+            raw: true
+          # Declared a location object; null until the shipment has actually moved.
+          - type: fieldAbsent
+            path: tracking_history.0.location
+            raw: true
+          # The other direction: the API always sends `test`, and the spec's Track declares no
+          # such property, so it is readable only from the wire.
+          - type: fieldEquals
+            path: test
+            value: true
+            raw: true

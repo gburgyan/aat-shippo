@@ -1,0 +1,35 @@
+# No webhook this package registered is still on the account. Webhooks are the one thing here that
+# Shippo lets us delete, so unlike the label guards — which prove that what was bought was refunded
+# — this one proves that what was registered is gone.
+#
+# That flips the usual rule. The label guards assert ourCount > 0 so they cannot pass by finding
+# nothing; this guard's whole point is to find nothing, so it asserts ourCount == 0. What keeps it
+# from being vacuous is the `next` check: the spec declares no paging parameters for this listing,
+# so the guard proves it read the whole of it rather than assuming.
+#
+# The name sorts it last in a batch, after every plan that might register one.
+intent:
+  goal: webhooks
+  description: No webhook registered by this package is still on the account
+
+execution:
+  steps:
+    - id: webhooks
+      node: listWebhooks
+      isGoal: true
+      description: Every webhook on the account, of which none may be this package's
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # Ours are gone, and nothing on the account is registered in live mode.
+          - type: predicate
+            expr: ourCount == 0 && liveCount == 0
+          # There is no second page hiding one: the listing takes no paging parameters, so this
+          # read is provably all of it.
+          - type: fieldAbsent
+            path: next
+            raw: true

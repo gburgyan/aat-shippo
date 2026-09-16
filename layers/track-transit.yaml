@@ -1,0 +1,7 @@
+name: track-transit
+description: >-
+  In transit, having departed the origin. Two history entries, UNKNOWN then TRANSIT: the chain
+  does not start where PRE_TRANSIT does.
+selectionHint: A shipment on its way
+inputs:
+  getTrack.trackingNumber: SHIPPO_TRANSIT

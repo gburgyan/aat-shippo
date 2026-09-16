@@ -170,6 +170,60 @@ concepts:
     applies_to: [packageEpoch, createdGte, liveCount, ourCount]
     constraint: assert only ourCount and liveCount; never assert the account-wide count
 
+  tracking:
+    description: >-
+      A track is read by carrier and tracking number, and answers the current tracking_status plus
+      the whole tracking_history. In test mode the only carrier that answers is `shippo`, and the
+      only numbers it accepts are six fixtures — SHIPPO_PRE_TRANSIT, SHIPPO_TRANSIT,
+      SHIPPO_DELIVERED, SHIPPO_RETURNED, SHIPPO_FAILURE and SHIPPO_UNKNOWN. Registering a number
+      with POST /tracks answers 200 rather than 201 and is idempotent. Proven by
+      plans/tracking/fixtures.yaml and plans/tracking/register.yaml.
+    applies_to: [carrier, trackingNumber, status, historyCount]
+    constraint: never assert eta or original_eta; they are relative to now and move every call
+
+  trackingFixtures:
+    description: >-
+      The six fixtures are a cumulative chain rather than six independent states: UNKNOWN (1
+      history entry), TRANSIT (2), FAILURE (3), DELIVERED (4), RETURNED (5), with PRE_TRANSIT its
+      own single entry. Shippo's delivered path therefore walks through a FAILURE, and a return is
+      modelled as something that happens after a delivery. The history count is a deterministic
+      function of the fixture, which is what makes this a layer axis that cannot flake. Proven by
+      plans/tracking/fixtures.yaml across all six layers.
+    applies_to: [historyCount, historyStatuses, lastHistoryStatus]
+    constraint: assert the chain, not the timestamps
+
+  testModeTracking:
+    description: >-
+      A label bought in test mode is issued a real, well-formed carrier tracking number that test
+      mode then refuses to track: GET /tracks/usps/<number> answers 400 with "usps is not a valid
+      test tracking carrier. Please use 'shippo'", word for word, for every real carrier. Asking
+      `shippo` for a number that is not a fixture gives a different 400, about the number. Test
+      tracking is a closed fixture system with no way in from the labels you buy. Proven by
+      plans/labels/tracking-refused.yaml.
+    applies_to: [carrier, trackingNumber]
+    constraint: never build a tracking plan that starts from a purchased label
+
+  webhooks:
+    description: >-
+      A webhook is an event and a URL. Shippo asks for nothing else — there is no verification
+      handshake, no challenge, and no ping — so the whole create/read/list/update/delete lifecycle
+      is drivable against a URL that never answers, which is how this package tests it. Delivery,
+      payloads, retries and signatures are not testable without a receiver and are not claimed.
+      **No signing secret is issued**, so unlike most webhook APIs there is nothing here to redact.
+      Proven by plans/webhooks/lifecycle.yaml.
+    applies_to: [event, url, active, isTest]
+    constraint: register only https URLs carrying aat-shippo, which is the only tag a webhook has
+
+  webhookQuirks:
+    description: >-
+      Three things a webhook does that its spec does not say. `event: all` is stored and read back
+      as `*`, which the spec's own enum does not list. An update does not move `object_updated`,
+      so the object carries no trace of having been changed. And the listing declares no `page` or
+      `results` parameters while paging anyway — so this package sends neither and proves `next`
+      is absent instead. Proven by plans/webhooks/lifecycle.yaml.
+    applies_to: [event, objectUpdated, nextPage]
+    constraint: assert next is absent rather than sending parameters the spec does not declare
+
 types:
   objectId:
     description: A Shippo object id

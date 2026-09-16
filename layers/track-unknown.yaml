@@ -1,0 +1,7 @@
+name: track-unknown
+description: >-
+  The carrier has the information and reports nothing further. One history entry, no location,
+  and the same status_details PRE_TRANSIT gives under a different status.
+selectionHint: A shipment the carrier says nothing about
+inputs:
+  getTrack.trackingNumber: SHIPPO_UNKNOWN

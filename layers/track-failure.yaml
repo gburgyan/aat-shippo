@@ -1,0 +1,7 @@
+name: track-failure
+description: >-
+  The carrier reported a problem and asks you to contact support. Three history entries, ending
+  at FAILURE.
+selectionHint: A shipment the carrier could not handle
+inputs:
+  getTrack.trackingNumber: SHIPPO_FAILURE

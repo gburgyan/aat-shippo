@@ -1,0 +1,10 @@
+adapter: deleteWebhook
+protocol: http
+
+request:
+  method: DELETE
+  path: /webhooks/{{webhookId}}
+
+# 204, no body: there is nothing to extract.
+response:
+  extract: {}

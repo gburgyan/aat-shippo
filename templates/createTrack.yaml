@@ -1,0 +1,31 @@
+adapter: createTrack
+protocol: http
+
+request:
+  method: POST
+  path: /tracks
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "carrier": "{{carrier}}",
+      "tracking_number": "{{trackingNumber}}"{{?metadata}},
+      "metadata": "{{metadata}}"{{/metadata}}
+    }
+
+response:
+  extract:
+    carrier: carrier
+    trackingNumber: tracking_number
+    status: tracking_status.status
+    statusDetails:
+      path: tracking_status.status_details
+      default: ""
+    metadata:
+      path: metadata
+      default: ""
+  # tracking_history is what says how far the shipment has walked; a fixture's length is fixed.
+  transform: |
+    local history = json_path("tracking_history") or {}
+    outputs.historyCount = #history
+    return outputs

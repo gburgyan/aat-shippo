@@ -1,0 +1,120 @@
+# The whole webhook lifecycle, with no receiver anywhere: create, read, list, update, delete, and
+# then prove the delete took. Shippo asks for nothing but a URL — there is no verification
+# handshake, no challenge, and no ping — so an endpoint that never answers is a perfectly valid
+# webhook target. That is what makes this testable at all without standing up a server.
+#
+# Two findings are pinned here:
+#   - `event: all` is stored and read back as `*`, which the spec's own enum does not list.
+#   - an update does not move `object_updated`: the object still reports its creation time.
+#
+# The webhook is deleted by the plan's own last step, so the graph's createWebhook -> deleteWebhook
+# cleanup finds nothing left to do and reports itself released.
+intent:
+  goal: gone
+  description: A webhook can be registered, read, listed, updated and deleted with no receiver
+
+execution:
+  steps:
+    - id: create
+      node: createWebhook
+      description: Register a webhook for every event, against the environment's URL
+      values:
+        event: all
+        url: "{{env.webhookUrl}}"
+        active: true
+        isTest: true
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          # `all` went out; `*` came back. The spec's enum lists the first and not the second.
+          - type: predicate
+            expr: 'event == "*" && active == true && isTest == true'
+          - type: predicate
+            expr: 'url == "{{env.webhookUrl}}"'
+          # No signing secret is issued at all, so there is nothing here to redact.
+          - type: fieldAbsent
+            path: secret
+            raw: true
+
+    - id: read
+      node: getWebhook
+      dependsOn: [create]
+      description: The same webhook read back by its object id
+      values:
+        webhookId: "{{create.webhookId}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'webhookId == "{{create.webhookId}}" && event == "*" && active == true'
+
+    - id: listed
+      node: listWebhooks
+      dependsOn: [create]
+      description: The account's webhooks, which must include the one just registered
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: ourCount >= 1 && liveCount == 0 && ourCount <= count
+          # The spec declares no paging parameters for this listing, so a single read has to be
+          # provably the whole of it.
+          - type: fieldAbsent
+            path: next
+            raw: true
+
+    - id: update
+      node: updateWebhook
+      dependsOn: [read, listed]
+      description: Turn it off, which is a whole-object replace rather than a patch
+      values:
+        webhookId: "{{create.webhookId}}"
+        event: track_updated
+        url: "{{env.webhookUrl}}"
+        active: false
+        isTest: true
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: 'active == false && event == "track_updated"'
+          # An update leaves no trace in the object: object_updated still reads as the create time.
+          - type: predicate
+            expr: 'objectUpdated == "{{create.objectUpdated}}"'
+
+    - id: remove
+      node: deleteWebhook
+      dependsOn: [update]
+      description: Delete it — the one thing this package creates that Shippo lets it destroy
+      values:
+        webhookId: "{{create.webhookId}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 204
+
+    - id: gone
+      node: getWebhook
+      dependsOn: [remove]
+      isGoal: true
+      expectFailure:
+        status: [404]
+        description: The webhook was deleted, so reading it is expected to fail
+      description: Reading it now answers Shippo's flat not-found body
+      values:
+        webhookId: "{{create.webhookId}}"
+      assertions:
+        mechanical:
+          - type: status
+            expect: 404
+          - type: fieldEquals
+            path: detail
+            value: "Not found."
+            raw: true

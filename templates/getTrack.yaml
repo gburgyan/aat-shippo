@@ -1,0 +1,40 @@
+adapter: getTrack
+protocol: http
+
+request:
+  method: GET
+  path: /tracks/{{carrier}}/{{trackingNumber}}
+
+response:
+  extract:
+    carrier: carrier
+    trackingNumber: tracking_number
+    status: tracking_status.status
+    statusDetails:
+      path: tracking_status.status_details
+      default: ""
+    serviceToken:
+      path: servicelevel.token
+      default: ""
+    metadata:
+      path: metadata
+      default: ""
+  # The history's statuses in the order they happened, which is the chain a fixture walked, plus
+  # whether a location came back at all: the spec declares location non-nullable and the API sends
+  # null for the two fixtures that have not moved yet. transaction is null on a fixture for the
+  # same reason — nobody owns it — though the spec types it a string.
+  transform: |
+    local history = json_path("tracking_history") or {}
+    local statuses = {}
+    for _, h in ipairs(history) do
+      table.insert(statuses, tostring(h.status))
+    end
+    outputs.historyCount = #history
+    outputs.historyStatuses = table.concat(statuses, ",") .. ""
+    outputs.lastHistoryStatus = (#statuses > 0 and statuses[#statuses] or "") .. ""
+    outputs.hasLocation = json_path("tracking_status.location") ~= nil
+    local txn = json_path("transaction")
+    outputs.transactionId = type(txn) == "string" and txn or ""
+    local messages = json_path("messages") or {}
+    outputs.messageCount = #messages
+    return outputs

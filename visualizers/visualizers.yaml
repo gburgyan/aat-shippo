@@ -39,3 +39,12 @@ visualizers:
     file: label.html
     match:
       node: getTransaction
+
+  # A tracking history as a timeline, newest at the bottom, with the status chips and whatever
+  # location each event carried. Matches on the body shape, so it covers both the read and the
+  # registration — they answer the same Track object.
+  - id: tracking
+    name: Tracking
+    file: tracking.html
+    match:
+      bodyPath: tracking_status.status

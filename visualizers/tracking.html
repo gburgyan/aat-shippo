@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tracking</title>
+<style>
+  body {
+    margin: 0;
+    padding: 12px;
+    background: var(--color-bg, #0f1117);
+    color: var(--color-text, #e4e4e7);
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 13px;
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 12px; }
+  h1 { margin: 0; font-size: 15px; }
+  h2 { font-size: 13px; margin: 0 0 8px; }
+  .muted { color: var(--color-text-secondary, #a1a1aa); }
+  .mono { font-family: var(--font-mono, ui-monospace, monospace); }
+  .status {
+    display: inline-block;
+    padding: 1px 7px;
+    border: 1px solid var(--color-border, #27272a);
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  .status.DELIVERED { border-color: var(--color-success, #4ade80); color: var(--color-success, #4ade80); }
+  .status.FAILURE { border-color: var(--color-error, #f87171); color: var(--color-error, #f87171); }
+  .status.RETURNED, .status.UNKNOWN { border-color: var(--color-warning, #fbbf24); color: var(--color-warning, #fbbf24); }
+  .status.TRANSIT, .status.PRE_TRANSIT { border-color: var(--color-primary, #60a5fa); color: var(--color-primary, #60a5fa); }
+  .layout { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .timeline { flex: 1 1 380px; min-width: 320px; list-style: none; margin: 0; padding: 0; }
+  /* The rail the dots sit on. Each entry indents past it. */
+  .timeline li {
+    position: relative;
+    padding: 0 0 16px 20px;
+    border-left: 1px solid var(--color-border, #27272a);
+  }
+  .timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .timeline li::before {
+    content: "";
+    position: absolute;
+    left: -4.5px;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-border, #27272a);
+  }
+  .timeline li.now::before { background: var(--color-primary, #60a5fa); }
+  .entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+  .when { color: var(--color-text-secondary, #a1a1aa); font-size: 11px; }
+  .details { margin: 3px 0 0; }
+  .where { margin: 2px 0 0; color: var(--color-text-secondary, #a1a1aa); font-size: 11px; }
+  .facts { flex: 0 1 260px; min-width: 220px; }
+  .facts dt { color: var(--color-text-secondary, #a1a1aa); font-size: 11px; margin-top: 8px; }
+  .facts dd { margin: 2px 0 0; word-break: break-all; }
+  .lane { margin: 0 0 10px; }
+  .msgs { margin-top: 14px; }
+  .msgs li { margin-bottom: 3px; }
+  .src { font-family: var(--font-mono, ui-monospace, monospace); color: var(--color-text-secondary, #a1a1aa); }
+</style>
+</head>
+<body>
+<div id="root"><p class="muted">Waiting for data…</p></div>
+<script>
+(function () {
+  'use strict';
+
+  // Build nodes with textContent only: the body comes from the API under test.
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      if (key === 'text') {
+        node.textContent = attrs[key];
+      } else {
+        node.setAttribute(key, attrs[key]);
+      }
+    });
+    (children || []).forEach(function (child) {
+      if (child) node.appendChild(child);
+    });
+    return node;
+  }
+
+  function text(value) {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function postSize() {
+    parent.postMessage({ type: 'aat-visualizer-resize', height: document.documentElement.scrollHeight }, '*');
+  }
+
+  // "2026-09-14T03:00:38.336Z" reads better as a date and a time. Anything unparseable is left
+  // exactly as the API sent it rather than guessed at.
+  function when(value) {
+    var raw = text(value);
+    if (!raw) return '';
+    var ms = Date.parse(raw);
+    if (isNaN(ms)) return raw;
+    var d = new Date(ms);
+    return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  }
+
+  // A location is {city, state, zip, country}, any of which may be missing — and the whole object
+  // is null until the shipment has actually moved, though the spec declares it non-nullable.
+  function place(loc) {
+    if (!loc || typeof loc !== 'object') return '';
+    return [loc.city, loc.state, loc.zip, loc.country].filter(function (part) {
+      return part !== null && part !== undefined && String(part) !== '';
+    }).join(', ');
+  }
+
+  function entry(item, isLast) {
+    item = item || {};
+    var status = text(item.status);
+    var where = place(item.location);
+    var sub = item.substatus && typeof item.substatus === 'object' ? text(item.substatus.text) : '';
+    return el('li', isLast ? { 'class': 'now' } : {}, [
+      el('div', { 'class': 'entry-head' }, [
+        status ? el('span', { 'class': 'status ' + status, text: status }) : null,
+        el('span', { 'class': 'when', text: when(item.status_date) })
+      ]),
+      item.status_details ? el('p', { 'class': 'details', text: text(item.status_details) }) : null,
+      sub ? el('p', { 'class': 'details muted', text: sub }) : null,
+      where ? el('p', { 'class': 'where', text: where }) : null
+    ]);
+  }
+
+  function facts(track) {
+    var rows = [];
+    function add(label, value) {
+      if (!value) return;
+      rows.push(el('dt', { text: label }));
+      rows.push(el('dd', { 'class': 'mono', text: value }));
+    }
+    add('Tracking number', text(track.tracking_number));
+    add('Carrier', text(track.carrier));
+    if (track.servicelevel && typeof track.servicelevel === 'object') {
+      add('Service', text(track.servicelevel.name));
+    }
+    add('ETA', when(track.eta));
+    add('Metadata', text(track.metadata));
+    return el('dl', { 'class': 'facts' }, rows);
+  }
+
+  function render(data) {
+    var root = document.getElementById('root');
+    root.textContent = '';
+
+    var track = data && typeof data === 'object' ? data : {};
+    var current = track.tracking_status && typeof track.tracking_status === 'object' ? track.tracking_status : {};
+    var status = text(current.status);
+    var history = Array.isArray(track.tracking_history) ? track.tracking_history : [];
+
+    root.appendChild(el('header', {}, [
+      el('h1', { text: status ? 'Tracking' : 'No tracking status' }),
+      status ? el('span', { 'class': 'status ' + status, text: status }) : null,
+      el('span', { 'class': 'muted', text: history.length + (history.length === 1 ? ' event' : ' events') }),
+      track.test === true ? el('span', { 'class': 'muted', text: 'test mode' }) : null
+    ]));
+
+    var from = place(track.address_from);
+    var to = place(track.address_to);
+    if (from || to) {
+      root.appendChild(el('p', { 'class': 'lane muted', text: (from || '?') + '  →  ' + (to || '?') }));
+    }
+
+    root.appendChild(el('div', { 'class': 'layout' }, [
+      history.length
+        ? el('ol', { 'class': 'timeline' }, history.map(function (item, i) {
+            return entry(item, i === history.length - 1);
+          }))
+        : el('p', { 'class': 'muted', text: 'The carrier has reported no events.' }),
+      facts(track)
+    ]));
+
+    var messages = Array.isArray(track.messages) ? track.messages : [];
+    if (messages.length) {
+      root.appendChild(el('div', { 'class': 'msgs' }, [
+        el('h2', { text: 'What the carrier said (' + messages.length + ')' }),
+        el('ul', {}, messages.map(function (m) {
+          m = m || {};
+          return el('li', {}, [
+            el('span', { 'class': 'src', text: text(m.source) + ': ' }),
+            el('span', { text: text(m.text) })
+          ]);
+        }))
+      ]));
+    }
+  }
+
+  window.addEventListener('message', function (event) {
+    var msg = event.data;
+    if (!msg || msg.type !== 'aat-visualizer-data') return;
+    Object.keys(msg.theme || {}).forEach(function (name) {
+      document.documentElement.style.setProperty(name, msg.theme[name]);
+    });
+    render(msg.body);
+    requestAnimationFrame(postSize);
+  });
+
+  parent.postMessage({ type: 'aat-visualizer-ready' }, '*');
+})();
+</script>
+</body>
+</html>

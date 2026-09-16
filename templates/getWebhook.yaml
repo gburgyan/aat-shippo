@@ -1,0 +1,19 @@
+adapter: getWebhook
+protocol: http
+
+request:
+  method: GET
+  path: /webhooks/{{webhookId}}
+
+response:
+  extract:
+    webhookId: object_id
+    event: event
+    url: url
+    active:
+      path: active
+      default: false
+    isTest:
+      path: is_test
+      default: false
+    objectUpdated: object_updated
