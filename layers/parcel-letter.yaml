@@ -1,0 +1,12 @@
+name: parcel-letter
+description: >-
+  A 22 x 11 x 1 cm letter weighing 15 g. Small and light enough for a carrier's letter products,
+  which a box is not: this is the parcel that reaches Deutsche Post's Kompaktbrief at 1.10 EUR.
+selectionHint: A letter or document, rather than a box
+inputs:
+  createParcel.length: "22"
+  createParcel.width: "11"
+  createParcel.height: "1"
+  createParcel.distanceUnit: cm
+  createParcel.weight: "15"
+  createParcel.massUnit: g

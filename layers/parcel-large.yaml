@@ -1,0 +1,12 @@
+name: parcel-large
+description: >-
+  A 30 x 22 x 15 cm box weighing 2 kg. Long enough to clear the 21 cm minimum Chronopost's products
+  require, which the everyday box is not.
+selectionHint: A large box
+inputs:
+  createParcel.length: "30"
+  createParcel.width: "22"
+  createParcel.height: "15"
+  createParcel.distanceUnit: cm
+  createParcel.weight: "2"
+  createParcel.massUnit: kg

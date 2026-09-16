@@ -440,23 +440,32 @@ nodes:
         type: string
         default: lb
         description: g, oz, lb, or kg
+      # The defaults describe an everyday 10 x 8 x 4 in, 2 lb box. A plan that cares about the
+      # parcel sets its own; the parcel-* layers set these inputs and nothing else, so a matrix can
+      # cross them with anything.
       - name: length
         type: string
         optional: true
+        default: "10"
       - name: width
         type: string
         optional: true
+        default: "8"
       - name: height
         type: string
         optional: true
+        default: "4"
       - name: distanceUnit
         type: string
         optional: true
+        default: in
         description: cm, in, ft, mm, m, or yd
       - name: template
         type: string
         optional: true
-        description: A carrier parcel template token, in place of the dimensions
+        description: >-
+          A carrier parcel template token, in place of the dimensions. A plan that sends one clears
+          the dimension inputs with {} so the body writes a single shape.
       - name: metadata
         type: string
         default: aat-shippo

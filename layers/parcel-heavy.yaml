@@ -1,0 +1,10 @@
+name: parcel-heavy
+description: A 40 x 30 x 30 cm box weighing 10 kg, past where several carriers' cheaper services stop.
+selectionHint: A heavy box
+inputs:
+  createParcel.length: "40"
+  createParcel.width: "30"
+  createParcel.height: "30"
+  createParcel.distanceUnit: cm
+  createParcel.weight: "10"
+  createParcel.massUnit: kg

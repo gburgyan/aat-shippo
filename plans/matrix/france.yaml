@@ -1,0 +1,79 @@
+# A matrix row. This plan pins its lane — Paris to Lyon — and sets nothing about the parcel, so
+# every parcel-* layer reaches it and the batch crosses them:
+#
+#   aat run batch matrix --env test-ci \
+#     --layer-group parcel-letter,parcel-large,parcel-heavy
+#
+# Four runs of this file, one per parcel plus the default box, and the carriers that answer are
+# not the same each time. That is the point: the parcel decides which carriers will quote at all,
+# not just what they charge.
+intent:
+  goal: rates
+  description: France, rated with whatever parcel the layers supply
+
+execution:
+  steps:
+    - id: from
+      node: createAddress
+      description: The sender, in Paris
+      values:
+        name: AAT Shippo
+        street1: 5 Avenue Anatole France
+        city: Paris
+        zip: "75007"
+        country: FR
+        phone: "+33140000000"
+        email: aat-shippo@example.com
+
+    - id: to
+      node: createAddress
+      dependsOn: [from]
+      description: The recipient, in Lyon
+      values:
+        name: AAT Recipient
+        street1: 20 Place Bellecour
+        city: Lyon
+        zip: "69002"
+        country: FR
+        phone: "+33470000000"
+        email: aat-shippo@example.com
+
+    # No parcel values here: whatever the layer says, or the graph's default box when there is none.
+    - id: parcel
+      node: createParcel
+      dependsOn: [to]
+      description: The parcel the layer chose
+
+    - id: shipment
+      node: createShipment
+      dependsOn: [parcel]
+      description: Rated before answering, so the carriers that declined are on the record
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        async: false
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && status == "SUCCESS"
+
+    - id: rates
+      node: listShipmentRates
+      dependsOn: [shipment]
+      isGoal: true
+      description: What this lane and this parcel could actually be shipped by
+      retry:
+        max: 3
+        on: [429]
+      values:
+        shipmentId: {from: shipment.shipmentId}
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # A parcel no carrier will take is a real answer, so the count is not asserted to be
+          # positive. What is asserted is that the rates and the shipment agree.
+          - type: predicate
+            expr: count == "{{shipment.rateCount}}" && providers == "{{shipment.providers}}"

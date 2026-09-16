@@ -22,6 +22,12 @@ execution:
         template: {from: template.token}
         weight: "1"
         massUnit: lb
+        # The template supplies the dimensions, so the graph's default ones are left out: the body
+        # sends one shape or the other, never both.
+        length: {}
+        width: {}
+        height: {}
+        distanceUnit: {}
       assertions:
         mechanical:
           - type: status

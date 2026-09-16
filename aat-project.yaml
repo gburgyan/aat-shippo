@@ -7,6 +7,7 @@ tags: [shipping, logistics, shippo, test-mode]
 graph: graph.yaml
 templates: templates/
 domain: domain.yaml
+layers: layers/
 plans: plans/
 visualizers: visualizers/
 # Shippo's published spec (docs.goshippo.com), vendored verbatim; see the README for its pin.
