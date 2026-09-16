@@ -36,19 +36,29 @@ jobs:
           SHIPPO_API_TOKEN: ${{ secrets.SHIPPO_API_TOKEN }}
         run: aat run batch --env test-ci
 
+      # The project's own name, so the file says which API it came from.
       - name: Pack each batch as a .aab
+        id: pack
         if: always() && steps.token.outputs.present == 'true'
         run: |
           shopt -s nullglob
+          project=$(sed -n 's/^name:[[:space:]]*//p' aat-project.yaml | head -1 | tr -d "\"'")
           for dir in _output/runs/batch-*; do
-            (cd "$dir" && zip -qr "$GITHUB_WORKSPACE/${dir##*/}.aab" . -i '*.json')
+            (cd "$dir" && zip -qr "$GITHUB_WORKSPACE/${project}-${dir##*/}.aab" . -i '*.json')
           done
           packed=(./*.aab)
+          base=""
           if [ ${#packed[@]} -eq 0 ]; then
             echo "no batch to pack"
           else
             ls -l "${packed[@]}"
+            if [ ${#packed[@]} -eq 1 ]; then
+              base=$(basename "${packed[0]}" .aab)
+            fi
           fi
+          # The artifact is named for the file it holds, so the download is not a
+          # zip called something else with a zip inside it.
+          echo "artifact=${base:-${project}-archives}" >> "$GITHUB_OUTPUT"
 
       - name: Say how to open it
         if: always() && steps.token.outputs.present == 'true'
@@ -56,11 +66,11 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           ## Run archives
 
-          The `run-archives` artifact holds one `.aab` per batch: every request and
-          response, as AAT recorded it. With aat 0.2.0 or later on your PATH:
+          Every request and response of this batch, as AAT recorded it. With aat 0.2.0
+          or later on your PATH:
 
           ```
-          aat web view <batch>.aab
+          aat web view ${{ steps.pack.outputs.artifact }}.aab
           ```
 
           It opens in the browser straight from the file -- in memory, nothing unpacked.
@@ -75,7 +85,7 @@ jobs:
         if: always() && steps.token.outputs.present == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: run-archives
+          name: ${{ steps.pack.outputs.artifact }}
           path: ./*.aab
           if-no-files-found: warn
           retention-days: 14
