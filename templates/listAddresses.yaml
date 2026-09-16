@@ -1,0 +1,32 @@
+adapter: listAddresses
+protocol: http
+
+request:
+  method: GET
+  path: /addresses?results={{pageSize}}{{?page}}&page={{page}}{{/page}}
+
+response:
+  extract:
+    addresses:
+      path: results
+      fields:
+        addressId: object_id
+        country: country
+    count: 'results.#'
+  # Addresses this package creates carry a metadata tag, except those created with validate: true,
+  # which Shippo strips. A page counts the tagged ones and any not in test mode.
+  transform: |
+    local rows = json_path("results") or {}
+    local ours, live = 0, 0
+    for _, a in ipairs(rows) do
+      if type(a.metadata) == "string" and a.metadata:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+      if a.test == false then live = live + 1 end
+    end
+    outputs.ourCount = ours
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

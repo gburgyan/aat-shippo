@@ -1,0 +1,98 @@
+# One address per country the test carriers serve, to prove what each needs to be complete. Canada
+# and Australia want a state or province where the European ones do not, and Shippo takes the
+# country as an ISO 3166-1 alpha-2 code throughout.
+intent:
+  goal: australia
+  description: Addresses outside the US are complete without a state, except in Canada and Australia
+
+execution:
+  steps:
+    - id: canada
+      node: createAddress
+      description: Toronto, with a province
+      values:
+        name: AAT Recipient
+        street1: 290 Bremner Blvd
+        city: Toronto
+        state: ON
+        zip: M5V 3L9
+        country: CA
+        phone: "+15553419395"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && country == "CA" && state == "ON" && isComplete == true
+
+    - id: unitedKingdom
+      node: createAddress
+      dependsOn: [canada]
+      description: London, with no county
+      values:
+        name: AAT Recipient
+        street1: 221B Baker Street
+        city: London
+        zip: NW1 6XE
+        country: GB
+        phone: "+442079460123"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && country == "GB" && state == "" && isComplete == true
+
+    - id: germany
+      node: createAddress
+      dependsOn: [unitedKingdom]
+      description: Berlin
+      values:
+        name: AAT Recipient
+        street1: Pariser Platz 1
+        city: Berlin
+        zip: "10117"
+        country: DE
+        phone: "+493030000000"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && country == "DE" && isComplete == true
+
+    - id: france
+      node: createAddress
+      dependsOn: [germany]
+      description: Paris
+      values:
+        name: AAT Recipient
+        street1: 5 Avenue Anatole France
+        city: Paris
+        zip: "75007"
+        country: FR
+        phone: "+33140000000"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && country == "FR" && isComplete == true
+
+    - id: australia
+      node: createAddress
+      dependsOn: [france]
+      isGoal: true
+      description: Sydney, with a state and the company CouriersPlease asks a sender for
+      values:
+        name: AAT Recipient
+        company: AAT Shippo
+        street1: 2 Macquarie St
+        city: Sydney
+        state: NSW
+        zip: "2000"
+        country: AU
+        phone: "+61280000000"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              test == true && country == "AU" && state == "NSW" &&
+              company == "AAT Shippo" && isComplete == true

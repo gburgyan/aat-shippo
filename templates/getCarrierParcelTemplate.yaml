@@ -1,0 +1,19 @@
+adapter: getCarrierParcelTemplate
+protocol: http
+
+request:
+  method: GET
+  path: /parcel-templates/{{templateToken}}
+
+response:
+  extract:
+    token: token
+    carrier: carrier
+    name: name
+    length: length
+    width: width
+    height: height
+    distanceUnit: distance_unit
+    isVariableDimensions:
+      path: is_variable_dimensions
+      default: false

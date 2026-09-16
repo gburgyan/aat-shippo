@@ -1,0 +1,24 @@
+adapter: getParcel
+protocol: http
+
+request:
+  method: GET
+  path: /parcels/{{parcelId}}
+
+response:
+  extract:
+    parcelId: object_id
+    length: length
+    width: width
+    height: height
+    distanceUnit: distance_unit
+    weight: weight
+    massUnit: mass_unit
+    template:
+      path: template
+      default: ""
+    objectState: object_state
+    test: test
+    metadata:
+      path: metadata
+      default: ""

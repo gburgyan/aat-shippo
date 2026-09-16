@@ -1,0 +1,30 @@
+adapter: listParcels
+protocol: http
+
+request:
+  method: GET
+  path: /parcels?results={{pageSize}}{{?page}}&page={{page}}{{/page}}
+
+response:
+  extract:
+    parcels:
+      path: results
+      fields:
+        parcelId: object_id
+        massUnit: mass_unit
+    count: 'results.#'
+  transform: |
+    local rows = json_path("results") or {}
+    local ours, live = 0, 0
+    for _, p in ipairs(rows) do
+      if type(p.metadata) == "string" and p.metadata:sub(1, 10) == "aat-shippo" then ours = ours + 1 end
+      if p.test == false then live = live + 1 end
+    end
+    outputs.ourCount = ours
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

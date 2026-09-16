@@ -1,0 +1,27 @@
+adapter: getCarrierAccount
+protocol: http
+
+request:
+  method: GET
+  path: /carrier_accounts/{{carrierAccountId}}
+
+response:
+  extract:
+    carrierAccountId: object_id
+    carrier: carrier
+    carrierName:
+      path: carrier_name
+      default: ""
+    active: active
+    isShippoAccount:
+      path: is_shippo_account
+      default: false
+    test: test
+  transform: |
+    local levels = json_path("service_levels") or {}
+    local tokens = {}
+    for _, l in ipairs(levels) do table.insert(tokens, tostring(l.token)) end
+    table.sort(tokens)
+    outputs.serviceLevelCount = #levels
+    outputs.serviceLevels = table.concat(tokens, ",") .. ""
+    return outputs

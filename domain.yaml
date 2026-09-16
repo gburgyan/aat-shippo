@@ -1,0 +1,139 @@
+# What these plans have verified about Shippo's API in test mode. Each concept names the plans that
+# prove it; nothing here is copied from the docs without a run behind it. Where a run showed
+# something no plan asserts yet, the concept says so.
+concepts:
+  authentication:
+    description: >-
+      Every request sends the API token as `Authorization: ShippoToken <token>` — Shippo's own
+      scheme, declared on its spec's APIKeyHeader as `x-token-format: "ShippoToken {token}"`. A test
+      token begins shippo_test_ and a live one shippo_live_. Proven by every plan.
+    applies_to: [SHIPPO_API_TOKEN]
+    constraint: never bake the scheme into the token; the environment writes it with valuePrefix
+
+  apiVersioning:
+    description: >-
+      SHIPPO-API-VERSION pins the API version a response is rendered at. The spec describes
+      2018-02-08 and declares the header as an optional parameter on 66 of its 70 operations. Sent
+      from the environment rather than a template, so the api-default environment can leave it off
+      and see the account's own default. Proven by plans/carriers/accounts.yaml under both.
+    applies_to: [shippoApiVersion]
+
+  testMode:
+    description: >-
+      Every object carries `test`, true for a test token. It is the only signal that separates a
+      test object from a real one, so every node that creates something fails a response whose
+      `test` is false, and a live token stops a plan at its first object. Proven by every create
+      plan.
+    applies_to: [test]
+    constraint: assert test == true before anything is bought
+
+  objects:
+    description: >-
+      Objects share a shape: a 32-character hex `object_id`, `object_created` and `object_updated`
+      as ISO 8601 UTC, `object_owner` as the account's email, and a free-text `metadata` of up to
+      100 characters. Everything this package creates carries metadata starting aat-shippo, which is
+      how the guards tell its objects from a co-tenant's. Proven by plans/addresses/create-and-read.yaml.
+    applies_to: [metadata, objectId]
+    constraint: tag every created object with metadata starting aat-shippo
+
+  pagination:
+    description: >-
+      Lists take `page` and `results` (the page size, 1 to 100) and answer
+      `{results, next, previous}`. `next` is a **full URL** carrying the next page number, not a
+      cursor, and both `next` and `previous` are null at the ends. A page number is parsed out of
+      that URL rather than built. ListCarrierParcelTemplates is the exception: it answers a bare
+      `{results}` and does not page. Proven by plans/addresses/create-and-read.yaml.
+    applies_to: [page, pageSize, nextPage]
+    constraint: page with the number in the next URL; never build a next URL
+
+  rateLimits:
+    description: >-
+      Test mode allows, per minute, 50 POSTs, 400 single-object GETs, 10 list GETs, and 10 batch
+      POSTs. The list limit is the binding one, so batches run with minRequestInterval set and list
+      steps retry on 429. Observed but not asserted (*probe*): UPS answers a rate request with
+      "Hard: Too Many Requests" of its own when shipments are created back to back, and simply
+      returns no rates, which is why a rate-shopping plan must not assert that a given carrier is
+      present.
+    applies_to: [minRequestInterval]
+
+  specNullability:
+    description: >-
+      Shippo's own spec marks nothing nullable, and the API sends null constantly: `next` and
+      `previous` on every list, and `is_residential`, `latitude`, `longitude` on an address and
+      `template` on a parcel. Under strict validation every list read fails for a reason that is the
+      spec's, not the caller's, so the environments validate in `auto` and record the findings.
+      drift/nullable-pagination.yaml pins them, and names the environment that fails on them.
+    applies_to: [oasValidation]
+    constraint: run plans in auto; use test-strict only to show the finding
+
+  carrierAccounts:
+    description: >-
+      A test token comes with 15 active carrier accounts, every one `is_shippo_account: true`, so no
+      carrier credentials are needed to rate or buy. `service_levels=true` on the **listing** is the
+      only way to see an account's service levels: reading one account on its own leaves
+      `service_levels` out of the body entirely. Ten of the fifteen answer a rate request; docs/carrier-lane-coverage.md
+      records which, and the reason each of the others gives. Proven by plans/carriers/accounts.yaml.
+    applies_to: [carrierAccountId, carrier, serviceLevels]
+
+  carrierParcelTemplates:
+    description: >-
+      Carriers publish 74 parcel templates, from USPS, UPS, FedEx, DHL eCommerce, DPD UK, and Aramex
+      Australia. A template's token stands in for a parcel's dimensions, and the parcel comes back
+      with the dimensions filled in and the token it was built from. Proven by
+      plans/carriers/parcel-templates.yaml and plans/parcels/from-template.yaml.
+    applies_to: [templateToken, template]
+
+  addresses:
+    description: >-
+      Only `country` is required to create an address; `is_complete` says whether it also has what a
+      label purchase needs. Addresses are immutable and cannot be deleted, so nothing cleans them
+      up — they are tagged and counted instead. Proven by plans/addresses/create-and-read.yaml.
+    applies_to: [addressId, isComplete]
+
+  addressValidation:
+    description: >-
+      Validation happens two ways. `validate: true` on a create corrects the address in place —
+      "1 Market Stret, San Fransisco" came back "1 Market St, San Francisco" with the ZIP+4 — and
+      **drops `metadata`**, so a validated address carries no tag. GET /addresses/{id}/validate
+      instead answers a **new** address object with its own object id. A valid address can still
+      carry advice: `is_valid: true` with a "Default Match" message asking for an apartment number.
+      Proven by plans/addresses/validate.yaml.
+    applies_to: [validate, isValid, messageCodes]
+    constraint: do not expect metadata back from an address created with validate
+
+  parcels:
+    description: >-
+      A parcel is either explicit dimensions plus weight, or a carrier template token plus weight.
+      Every measure is a string, not a number. Parcels are immutable and cannot be deleted. Proven
+      by plans/parcels/create-and-read.yaml.
+    applies_to: [parcelId, weight, massUnit, distanceUnit]
+
+  parcelDeterminesCarriers:
+    description: >-
+      The parcel decides which carriers will rate a shipment at all, not just what they charge. A
+      15 g letter reaches Deutsche Post (Kompaktbrief, 1.10 EUR) where a 2 lb box reaches only DPD
+      DE, and a 30 cm box reaches Chronopost where a 20 cm one does not — Chronopost's products have
+      a minimum size. Each absence is explained in the shipment's own `messages`. This is why the
+      parcel is a layer axis rather than a constant. Recorded in docs/carrier-lane-coverage.md;
+      the rating plans that assert it arrive with the rating family.
+    applies_to: [length, width, height, weight]
+
+  cleanupAndGuard:
+    description: >-
+      Almost nothing in Shippo can be deleted: addresses, parcels, shipments, customs objects,
+      orders and manifests are permanent. Cleanup is therefore a refund, not a delete, and the
+      guards are what keep the account honest. plans/zz-guard/no-live-labels.yaml pages every label
+      created since the environment's packageEpoch and fails if any was bought with a live token.
+      Objects from other work on the same account are counted apart and never fail a guard.
+    applies_to: [packageEpoch, createdGte, liveCount, ourCount]
+    constraint: assert only ourCount and liveCount; never assert the account-wide count
+
+types:
+  objectId:
+    description: A Shippo object id
+    format: string
+    validation: "^[0-9a-f]{32}$"
+  isoDateTime:
+    description: An ISO 8601 UTC date-time, as object_created_gte takes
+    format: string
+    validation: "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z?)?$"

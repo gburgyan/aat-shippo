@@ -1,0 +1,627 @@
+version: "1.0.0"
+title: Shippo (test mode)
+description: >-
+  Shippo's REST API at https://api.goshippo.com, in test mode. Requests are JSON, authenticated with
+  the API token as `Authorization: ShippoToken <token>`, and pinned to an API version with the
+  SHIPPO-API-VERSION header. Every object carries `object_id`, `object_created`, a free-text
+  `metadata` of up to 100 characters, and `test`, which is true for a test token. Lists page with
+  `page` and `results` and answer `{results, next, previous}`, where `next` is a full URL and both
+  `next` and `previous` are null at the ends, though the spec types them as strings. Errors are a
+  flat `{"detail": "..."}` or a per-field map. Every node names its operation in Shippo's own
+  OpenAPI spec, and the environments check each request and response against it.
+
+oas: openapi/public-api.yaml
+
+nodes:
+
+  # --- Carrier accounts -------------------------------------------------------------------
+  listCarrierAccounts:
+    description: >-
+      Page the carrier accounts the token can rate with (GET /carrier_accounts, 200). A clean test
+      account has 15, every one active, `test: true`, and `is_shippo_account: true`, so no carrier
+      credentials are needed to rate or buy. Ten of them actually answer a rate request; see
+      docs/carrier-lane-coverage.md for which, and why the other five do not. `service_levels: true`
+      adds each account's service levels, which is the only way to see them. Proven by
+      plans/carriers/accounts.yaml.
+    adapter: listCarrierAccounts
+    tags: [carriers]
+    oas:
+      operationId: ListCarrierAccounts
+    inputs:
+      - name: serviceLevels
+        type: boolean
+        optional: true
+        description: Include each account's service levels
+      - name: carrier
+        type: string
+        optional: true
+        description: Only accounts for this carrier token, such as usps
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 100
+        description: Accounts per page, 1 to 100
+        constraints:
+          min: 1
+          max: 100
+    outputs:
+      - name: accounts
+        type: carrierAccount[]
+        elementFields:
+          - name: carrierAccountId
+            type: string
+          - name: carrier
+            type: string
+          - name: active
+            type: boolean
+      - name: count
+        type: integer
+        display: Carriers
+      - name: activeCount
+        type: integer
+      - name: shippoAccountCount
+        type: integer
+        description: Accounts Shippo provides itself, which need no carrier credentials
+      - name: serviceLevelCount
+        type: integer
+        description: Service levels across the page; 0 unless serviceLevels was set
+      - name: carriers
+        type: string
+        description: The page's carrier tokens, sorted and comma-joined
+      - name: liveCount
+        type: integer
+        description: Accounts not in test mode on the page; 0 for a test token
+      - name: nextPage
+        type: integer
+        optional: true
+        description: The page number in the `next` URL; left out on the last page
+
+  getCarrierAccount:
+    description: >-
+      Read one carrier account by its object id (GET /carrier_accounts/{id}, 200). Carries the
+      carrier token and display name, whether it is active, and whether Shippo provides it — but
+      **not its service levels**, which come back only from the listing with `service_levels: true`.
+      Proven by plans/carriers/accounts.yaml.
+    adapter: getCarrierAccount
+    tags: [carriers]
+    oas:
+      operationId: GetCarrierAccount
+    inputs:
+      - name: carrierAccountId
+        type: string
+        default:
+          from: listCarrierAccounts.accounts
+          select:
+            strategy: first
+            field: carrierAccountId
+    outputs:
+      - name: carrierAccountId
+        type: string
+      - name: carrier
+        type: string
+        display: Carrier
+      - name: carrierName
+        type: string
+      - name: active
+        type: boolean
+      - name: isShippoAccount
+        type: boolean
+      - name: test
+        type: boolean
+      - name: serviceLevelCount
+        type: integer
+        description: Always 0 here; a single read carries no service levels
+      - name: serviceLevels
+        type: string
+        description: Always "" here; the listing with serviceLevels set is the only source
+
+  # --- Carrier parcel templates -----------------------------------------------------------
+  listCarrierParcelTemplates:
+    description: >-
+      Every parcel template the carriers publish (GET /parcel-templates, 200). A test account sees
+      74, from USPS, UPS, FedEx, DHL eCommerce, DPD UK, and Aramex Australia. The answer is a bare
+      `{results}` with no `next` or `previous`, so it does not page. A template's token is what
+      createParcel takes in place of dimensions. Proven by plans/carriers/parcel-templates.yaml.
+    adapter: listCarrierParcelTemplates
+    tags: [carriers, parcels]
+    oas:
+      operationId: ListCarrierParcelTemplates
+    inputs:
+      - name: carrier
+        type: string
+        optional: true
+        description: Only templates for this carrier token
+      - name: include
+        type: string
+        optional: true
+        description: 'Narrow the list; "all" returns every template'
+    outputs:
+      - name: templates
+        type: parcelTemplate[]
+        elementFields:
+          - name: token
+            type: string
+          - name: carrier
+            type: string
+          - name: name
+            type: string
+      - name: count
+        type: integer
+        display: Templates
+      - name: carriers
+        type: string
+        description: The carriers that publish them, sorted and comma-joined
+      - name: fixedCount
+        type: integer
+        description: Templates whose dimensions are fixed rather than variable
+
+  getCarrierParcelTemplate:
+    description: >-
+      Read one carrier parcel template by its token (GET /parcel-templates/{token}, 200), such as
+      USPS_FlatRateEnvelope. Carries the carrier, the display name, the dimensions with their unit,
+      and whether the dimensions vary. Proven by plans/carriers/parcel-templates.yaml.
+    adapter: getCarrierParcelTemplate
+    tags: [carriers, parcels]
+    oas:
+      operationId: GetCarrierParcelTemplate
+    inputs:
+      - name: templateToken
+        type: string
+        default:
+          from: listCarrierParcelTemplates.templates
+          select:
+            strategy: first
+            field: token
+    outputs:
+      - name: token
+        type: string
+        display: Template
+      - name: carrier
+        type: string
+      - name: name
+        type: string
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: distanceUnit
+        type: string
+      - name: isVariableDimensions
+        type: boolean
+
+  # --- Addresses --------------------------------------------------------------------------
+  createAddress:
+    description: >-
+      Create an address (POST /addresses, 201). Only `country` is required to create one, but a
+      purchase needs name, street1, city, zip, and a phone and email for some carriers, and
+      `is_complete` says whether it has them. With `validate: true` Shippo corrects the address as
+      it creates it — "1 Market Stret, San Fransisco" came back "1 Market St, San Francisco" with
+      the ZIP+4 — and **drops `metadata`**, so a validated address cannot carry the package's tag.
+      Addresses cannot be deleted, so nothing cleans them up; they are tagged instead. Proven by
+      plans/addresses/create-and-read.yaml and plans/addresses/validate.yaml.
+    adapter: createAddress
+    tags: [addresses]
+    oas:
+      operationId: CreateAddress
+    # A live token would create a real address; stop at the first one.
+    errorDetection:
+      - path: test
+        rule: equals
+        value: false
+    inputs:
+      - name: country
+        type: string
+        description: An ISO 3166-1 alpha-2 code, such as US or DE
+      - name: name
+        type: string
+        optional: true
+      - name: company
+        type: string
+        optional: true
+        description: Required by CouriersPlease on a from address
+      - name: street1
+        type: string
+        optional: true
+      - name: street2
+        type: string
+        optional: true
+      - name: city
+        type: string
+        optional: true
+      - name: state
+        type: string
+        optional: true
+        description: Required for US, CA, and AU; most carriers take two or three characters
+      - name: zip
+        type: string
+        optional: true
+      - name: phone
+        type: string
+        optional: true
+      - name: email
+        type: string
+        optional: true
+      - name: isResidential
+        type: boolean
+        optional: true
+      - name: validate
+        type: boolean
+        optional: true
+        description: Correct the address while creating it; Shippo then drops metadata
+      - name: metadata
+        type: string
+        default: aat-shippo
+        description: Up to 100 characters; every object this package creates carries its name
+    outputs:
+      - name: addressId
+        type: string
+        display: Address
+      - name: name
+        type: string
+      - name: company
+        type: string
+      - name: street1
+        type: string
+      - name: city
+        type: string
+      - name: state
+        type: string
+      - name: zip
+        type: string
+      - name: country
+        type: string
+      - name: isComplete
+        type: boolean
+        description: Whether the address has everything a label purchase needs
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+        description: '"" for an address created with validate: true'
+      - name: validationIsValid
+        type: boolean
+        optional: true
+        description: Present only when the address was created with validate; Shippo's verdict
+      - name: validationMessageCount
+        type: integer
+        description: Validator messages returned with the address; 0 when it was not validated
+
+  getAddress:
+    description: >-
+      Read an address by its object id (GET /addresses/{id}, 200). An address is immutable once
+      created, so this answers exactly what the create did. Proven by
+      plans/addresses/create-and-read.yaml.
+    adapter: getAddress
+    tags: [addresses]
+    oas:
+      operationId: GetAddress
+    inputs:
+      - name: addressId
+        type: string
+        default:
+          from: createAddress.addressId
+    outputs:
+      - name: addressId
+        type: string
+      - name: name
+        type: string
+      - name: street1
+        type: string
+      - name: city
+        type: string
+      - name: state
+        type: string
+      - name: zip
+        type: string
+      - name: country
+        type: string
+      - name: isComplete
+        type: boolean
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  listAddresses:
+    description: >-
+      Page the account's addresses (GET /addresses, 200), newest first. `next` is a full URL
+      carrying the next page number and `previous` is null on the first page, though the spec types
+      both as strings. Each page counts the addresses this package created, by their metadata tag,
+      and any not in test mode. Proven by plans/addresses/create-and-read.yaml.
+    adapter: listAddresses
+    tags: [addresses, pagination]
+    oas:
+      operationId: ListAddresses
+    inputs:
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 25
+        description: Addresses per page, 1 to 100
+        constraints:
+          min: 1
+          max: 100
+    outputs:
+      - name: addresses
+        type: address[]
+        elementFields:
+          - name: addressId
+            type: string
+          - name: country
+            type: string
+      - name: count
+        type: integer
+        display: Addresses
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Addresses on the page whose metadata starts aat-shippo
+      - name: liveCount
+        type: integer
+        description: Addresses not in test mode on the page; 0 for a test token
+      - name: nextPage
+        type: integer
+        optional: true
+        description: The page number in the `next` URL; left out on the last page
+
+  validateAddress:
+    description: >-
+      Validate an address that already exists (GET /addresses/{id}/validate, 200). Shippo answers a
+      **new** address object with its own object id, the corrected fields, and
+      `validation_results.messages`, each with a source, a code, and text. A valid address can still
+      carry a message: a correct street with no apartment number comes back `is_valid: true` with
+      "Default Match — More information, such as an apartment or suite number, may give a more
+      specific address." Proven by plans/addresses/validate.yaml.
+    adapter: validateAddress
+    tags: [addresses, validation]
+    oas:
+      operationId: ValidateAddress
+    inputs:
+      - name: addressId
+        type: string
+        default:
+          from: createAddress.addressId
+    outputs:
+      - name: addressId
+        type: string
+        display: Validated
+        description: A new object id, not the one that was validated
+      - name: isValid
+        type: boolean
+      - name: messageCount
+        type: integer
+      - name: messageCodes
+        type: string
+        description: The validator message codes, sorted and comma-joined
+      - name: messageText
+        type: string
+        description: The first message's text; "" when there are none
+      - name: street1
+        type: string
+      - name: city
+        type: string
+      - name: zip
+        type: string
+      - name: isComplete
+        type: boolean
+      - name: test
+        type: boolean
+
+  # --- Parcels ----------------------------------------------------------------------------
+  createParcel:
+    description: >-
+      Create a parcel (POST /parcels, 201). The body is one of two shapes: explicit dimensions with
+      `length`, `width`, `height`, and `distance_unit`, or a carrier's `template` token, which
+      supplies them. Both need `weight` and `mass_unit`. Dimensions and weight are strings, not
+      numbers. The parcel decides which carriers will rate a shipment at all, not just the price:
+      a 15 g letter reaches Deutsche Post and a 30 cm box reaches Chronopost, where a 2 lb box
+      reaches neither. Parcels cannot be deleted, so nothing cleans them up. Proven by
+      plans/parcels/create-and-read.yaml and plans/parcels/from-template.yaml.
+    adapter: createParcel
+    tags: [parcels]
+    oas:
+      operationId: CreateParcel
+    # A live token would create a real parcel; stop at the first one.
+    errorDetection:
+      - path: test
+        rule: equals
+        value: false
+    inputs:
+      - name: weight
+        type: string
+        default: "2"
+      - name: massUnit
+        type: string
+        default: lb
+        description: g, oz, lb, or kg
+      - name: length
+        type: string
+        optional: true
+      - name: width
+        type: string
+        optional: true
+      - name: height
+        type: string
+        optional: true
+      - name: distanceUnit
+        type: string
+        optional: true
+        description: cm, in, ft, mm, m, or yd
+      - name: template
+        type: string
+        optional: true
+        description: A carrier parcel template token, in place of the dimensions
+      - name: metadata
+        type: string
+        default: aat-shippo
+    outputs:
+      - name: parcelId
+        type: string
+        display: Parcel
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: distanceUnit
+        type: string
+      - name: weight
+        type: string
+      - name: massUnit
+        type: string
+      - name: template
+        type: string
+        description: The template token the parcel was built from; "" for explicit dimensions
+      - name: objectState
+        type: string
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  getParcel:
+    description: >-
+      Read a parcel by its object id (GET /parcels/{id}, 200). A parcel is immutable, so this
+      answers what the create did, with the dimensions a template supplied filled in. Proven by
+      plans/parcels/create-and-read.yaml.
+    adapter: getParcel
+    tags: [parcels]
+    oas:
+      operationId: GetParcel
+    inputs:
+      - name: parcelId
+        type: string
+        default:
+          from: createParcel.parcelId
+    outputs:
+      - name: parcelId
+        type: string
+      - name: length
+        type: string
+      - name: width
+        type: string
+      - name: height
+        type: string
+      - name: distanceUnit
+        type: string
+      - name: weight
+        type: string
+      - name: massUnit
+        type: string
+      - name: template
+        type: string
+      - name: objectState
+        type: string
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  listParcels:
+    description: >-
+      Page the account's parcels (GET /parcels, 200), newest first. Pages like the other listings.
+      Each page counts the parcels this package created and any not in test mode. Proven by
+      plans/parcels/create-and-read.yaml.
+    adapter: listParcels
+    tags: [parcels, pagination]
+    oas:
+      operationId: ListParcels
+    inputs:
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 25
+        constraints:
+          min: 1
+          max: 100
+    outputs:
+      - name: parcels
+        type: parcel[]
+        elementFields:
+          - name: parcelId
+            type: string
+          - name: massUnit
+            type: string
+      - name: count
+        type: integer
+        display: Parcels
+      - name: ourCount
+        type: integer
+        display: Ours
+      - name: liveCount
+        type: integer
+      - name: nextPage
+        type: integer
+        optional: true
+
+  # --- Transactions, for the guard --------------------------------------------------------
+  listTransactions:
+    description: >-
+      Page the labels the account has bought (GET /transactions, 200). `object_created_gte` narrows
+      the list to labels created at or after an ISO 8601 UTC time, which is how the guard looks only
+      at what this package could have bought; the spec declares that filter on this operation and on
+      ListShipments alone. Each page counts the labels this package bought and any bought with a
+      live token, which is the one unrecoverable mistake. Proven by
+      plans/zz-guard/no-live-labels.yaml.
+    adapter: listTransactions
+    tags: [transactions, pagination, guard]
+    oas:
+      operationId: ListTransactions
+    inputs:
+      - name: page
+        type: integer
+        optional: true
+      - name: pageSize
+        type: integer
+        default: 100
+        constraints:
+          min: 1
+          max: 100
+      - name: createdGte
+        type: string
+        optional: true
+        description: Only labels created at or after this ISO 8601 UTC time
+      - name: objectStatus
+        type: string
+        optional: true
+        description: QUEUED, WAITING, SUCCESS, ERROR, or REFUNDED
+    outputs:
+      - name: transactions
+        type: transaction[]
+        optional: true
+        elementFields:
+          - name: transactionId
+            type: string
+          - name: status
+            type: string
+      - name: count
+        type: integer
+        display: Labels
+      - name: ourCount
+        type: integer
+        display: Ours
+        description: Labels on the page whose metadata starts aat-shippo
+      - name: ourLabels
+        type: ourLabel[]
+        optional: true
+        description: The package's labels on the page, when there are any, so a guard can name them
+        elementFields:
+          - name: transactionId
+            type: string
+          - name: status
+            type: string
+      - name: liveCount
+        type: integer
+        description: Labels on the page not in test mode; a live token bought a real label
+      - name: nextPage
+        type: integer
+        optional: true

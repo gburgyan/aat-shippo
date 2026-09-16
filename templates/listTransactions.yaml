@@ -1,0 +1,33 @@
+adapter: listTransactions
+protocol: http
+
+request:
+  method: GET
+  path: /transactions?results={{pageSize}}{{?page}}&page={{page}}{{/page}}{{?createdGte}}&object_created_gte={{createdGte}}{{/createdGte}}{{?objectStatus}}&object_status={{objectStatus}}{{/objectStatus}}
+
+response:
+  extract:
+    count: 'results.#'
+  # Labels this package buys carry a metadata tag. A page counts those and lists them, so a guard
+  # that fails can name them, and counts any bought with a live token apart — the one mistake that
+  # cannot be undone by a refund.
+  transform: |
+    local rows = json_path("results") or {}
+    local all, ours, live = {}, {}, 0
+    for _, t in ipairs(rows) do
+      table.insert(all, {transactionId = t.object_id, status = t.status})
+      if type(t.metadata) == "string" and t.metadata:sub(1, 10) == "aat-shippo" then
+        table.insert(ours, {transactionId = t.object_id, status = t.status})
+      end
+      if t.test == false then live = live + 1 end
+    end
+    if #all > 0 then outputs.transactions = all end
+    outputs.ourCount = #ours
+    if #ours > 0 then outputs.ourLabels = ours end
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

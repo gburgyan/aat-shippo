@@ -1,0 +1,33 @@
+# The parcel templates the carriers publish, and one of them read by its token. A template's token
+# stands in for a parcel's dimensions; plans/parcels/from-template.yaml buys nothing but proves that.
+intent:
+  goal: flatRate
+  description: Carriers publish parcel templates, each a fixed box or envelope with a token
+
+execution:
+  steps:
+    - id: templates
+      node: listCarrierParcelTemplates
+      description: Every carrier parcel template; the answer does not page
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: count >= 70 && fixedCount > 0
+
+    - id: flatRate
+      node: getCarrierParcelTemplate
+      dependsOn: [templates]
+      isGoal: true
+      description: The USPS Flat Rate Envelope, by its token
+      values:
+        templateToken: USPS_FlatRateEnvelope
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              token == "USPS_FlatRateEnvelope" && carrier == "USPS" &&
+              distanceUnit == "in" && isVariableDimensions == false
+          - type: fieldExists
+            path: length

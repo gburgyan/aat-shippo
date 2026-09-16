@@ -1,0 +1,62 @@
+adapter: createAddress
+protocol: http
+
+request:
+  method: POST
+  path: /addresses
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "country": "{{country}}",
+      "metadata": "{{metadata}}"{{?name}},
+      "name": "{{name}}"{{/name}}{{?company}},
+      "company": "{{company}}"{{/company}}{{?street1}},
+      "street1": "{{street1}}"{{/street1}}{{?street2}},
+      "street2": "{{street2}}"{{/street2}}{{?city}},
+      "city": "{{city}}"{{/city}}{{?state}},
+      "state": "{{state}}"{{/state}}{{?zip}},
+      "zip": "{{zip}}"{{/zip}}{{?phone}},
+      "phone": "{{phone}}"{{/phone}}{{?email}},
+      "email": "{{email}}"{{/email}}{{?isResidential}},
+      "is_residential": {{isResidential}}{{/isResidential}}{{?validate}},
+      "validate": {{validate}}{{/validate}}
+    }
+
+response:
+  extract:
+    addressId: object_id
+    name:
+      path: name
+      default: ""
+    company:
+      path: company
+      default: ""
+    street1:
+      path: street1
+      default: ""
+    city:
+      path: city
+      default: ""
+    state:
+      path: state
+      default: ""
+    zip:
+      path: zip
+      default: ""
+    country: country
+    isComplete:
+      path: is_complete
+      default: false
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  # validation_results is {} unless the address was created with validate: true, so the verdict is
+  # left out rather than guessed, and the message count is always a number a plan can assert.
+  transform: |
+    local vr = json_path("validation_results") or {}
+    local messages = vr.messages or {}
+    outputs.validationMessageCount = #messages
+    if type(vr.is_valid) == "boolean" then outputs.validationIsValid = vr.is_valid end
+    return outputs

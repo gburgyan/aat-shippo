@@ -1,0 +1,53 @@
+# A parcel by its dimensions, read back and found in the listing. Every measure is a string, not a
+# number, and the unit travels with it. Parcels are immutable and cannot be deleted.
+intent:
+  goal: listed
+  description: A parcel is created from explicit dimensions, immutable, and listed
+
+execution:
+  steps:
+    - id: create
+      node: createParcel
+      description: A 10 x 8 x 4 in, 2 lb box
+      values:
+        length: "10"
+        width: "8"
+        height: "4"
+        distanceUnit: in
+        weight: "2"
+        massUnit: lb
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              test == true && metadata == "aat-shippo" && length == "10.0000" &&
+              width == "8.0000" && height == "4.0000" && distanceUnit == "in" &&
+              weight == "2.0000" && massUnit == "lb" && template == ""
+
+    - id: read
+      node: getParcel
+      dependsOn: [create]
+      description: The same parcel, unchanged
+      values:
+        parcelId: {from: create.parcelId}
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              parcelId == "{{create.parcelId}}" && test == true &&
+              length == "{{create.length}}" && weight == "{{create.weight}}" &&
+              massUnit == "{{create.massUnit}}" && metadata == "aat-shippo"
+
+    - id: listed
+      node: listParcels
+      dependsOn: [read]
+      isGoal: true
+      description: The first page of parcels, with the package's counted apart
+      values:
+        pageSize: 25
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: count > 0 && ourCount > 0 && ourCount <= count && liveCount == 0

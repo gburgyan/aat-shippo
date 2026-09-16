@@ -1,0 +1,34 @@
+# The other shape of a parcel body: a carrier's template token in place of the dimensions. Shippo
+# fills the dimensions in from the template and answers with the token it used, so the parcel says
+# where its measurements came from.
+intent:
+  goal: parcel
+  description: A parcel built from a carrier parcel template carries the template's dimensions
+
+execution:
+  steps:
+    - id: template
+      node: getCarrierParcelTemplate
+      description: The USPS Flat Rate Envelope and its dimensions
+      values:
+        templateToken: USPS_FlatRateEnvelope
+
+    - id: parcel
+      node: createParcel
+      dependsOn: [template]
+      isGoal: true
+      description: A parcel from that template, with only a weight of its own
+      values:
+        template: {from: template.token}
+        weight: "1"
+        massUnit: lb
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              test == true && metadata == "aat-shippo" &&
+              template == "{{template.token}}" &&
+              distanceUnit == "{{template.distanceUnit}}" &&
+              weight == "1.0000" && massUnit == "lb"

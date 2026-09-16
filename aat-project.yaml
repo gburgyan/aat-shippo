@@ -1,0 +1,16 @@
+name: shippo
+description: >-
+  The Shippo shipping API in test mode, validated against Shippo's own OpenAPI spec: carrier
+  accounts, addresses and their validation, and parcels so far, each proven against the live
+  test API
+tags: [shipping, logistics, shippo, test-mode]
+graph: graph.yaml
+templates: templates/
+domain: domain.yaml
+plans: plans/
+# Shippo's published spec (docs.goshippo.com), vendored verbatim; see the README for its pin.
+oas: openapi/public-api.yaml
+environment: env.yaml
+defaultEnvironment: test
+archives: _output/runs
+traces: _output/traces

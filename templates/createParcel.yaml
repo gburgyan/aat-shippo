@@ -1,0 +1,39 @@
+adapter: createParcel
+protocol: http
+
+request:
+  method: POST
+  path: /parcels
+  headers:
+    Content-Type: application/json
+  # The body is one of two shapes the spec offers: a template token, or explicit dimensions. Both
+  # carry weight and mass_unit, and every measure is a string.
+  body: |-
+    {
+      "weight": "{{weight}}",
+      "mass_unit": "{{massUnit}}",
+      "metadata": "{{metadata}}"{{?template}},
+      "template": "{{template}}"{{/template}}{{?length}},
+      "length": "{{length}}",
+      "width": "{{width}}",
+      "height": "{{height}}",
+      "distance_unit": "{{distanceUnit}}"{{/length}}
+    }
+
+response:
+  extract:
+    parcelId: object_id
+    length: length
+    width: width
+    height: height
+    distanceUnit: distance_unit
+    weight: weight
+    massUnit: mass_unit
+    template:
+      path: template
+      default: ""
+    objectState: object_state
+    test: test
+    metadata:
+      path: metadata
+      default: ""

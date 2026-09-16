@@ -1,0 +1,35 @@
+# Every label bought on this account since the package started (packageEpoch in env.yaml), a page at
+# a time: none was bought with a live token. A live token buying a real label is the one mistake a
+# refund cannot undo, so this is the guard that matters most. Labels from other work on the same
+# account are counted apart and never fail it.
+#
+# The name sorts it last in a batch; run the batch sequentially, since a parallel one can still be
+# buying when this reads. While the package buys no labels, ourCount is 0 and only liveCount is
+# asserted; the label plans tighten it.
+intent:
+  goal: labels
+  description: No label on this account was bought with a live token since the package started
+
+execution:
+  steps:
+    - id: labels
+      node: listTransactions
+      isGoal: true
+      description: Every page of labels since packageEpoch, counted by token mode and by source
+      values:
+        pageSize: 100
+        createdGte: "{{env.packageEpoch}}"
+      repeat:
+        next: {page: nextPage}
+        collect: [count, ourCount, ourLabels, liveCount]
+        max: 100
+      # The list read is one of the ten a minute test mode allows.
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: liveCount == 0 && ourCount <= count

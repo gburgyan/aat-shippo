@@ -1,0 +1,28 @@
+adapter: listCarrierParcelTemplates
+protocol: http
+
+request:
+  method: GET
+  path: /parcel-templates{{?carrier|include}}?{{/carrier|include}}{{?carrier}}carrier={{carrier}}{{/carrier}}{{?include}}{{?carrier}}&{{/carrier}}include={{include}}{{/include}}
+
+response:
+  extract:
+    templates:
+      path: results
+      fields:
+        token: token
+        carrier: carrier
+        name: name
+    count: 'results.#'
+  transform: |
+    local rows = json_path("results") or {}
+    local seen, carriers, fixed = {}, {}, 0
+    for _, t in ipairs(rows) do
+      local c = tostring(t.carrier)
+      if not seen[c] then seen[c] = true; table.insert(carriers, c) end
+      if t.is_variable_dimensions == false then fixed = fixed + 1 end
+    end
+    table.sort(carriers)
+    outputs.carriers = table.concat(carriers, ",") .. ""
+    outputs.fixedCount = fixed
+    return outputs

@@ -1,0 +1,75 @@
+# Shippo validates an address two ways, and they differ in more than the endpoint.
+#
+#   validate: true on the create corrects the address in place and drops metadata, so a validated
+#   address carries no tag.
+#
+#   GET /addresses/{id}/validate answers a NEW address object with its own object id.
+#
+# A valid address can still carry advice, so the messages are asserted, not just the verdict.
+intent:
+  goal: revalidated
+  description: Validating corrects an address, drops its metadata, and answers a new object
+
+execution:
+  steps:
+    - id: sloppy
+      node: createAddress
+      description: A misspelled street and city, created with validate set
+      values:
+        name: AAT Shippo
+        street1: 1 Market Stret
+        city: San Fransisco
+        state: CA
+        zip: "94105"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+        validate: true
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          # Shippo corrected the street, the city, and the ZIP, and dropped the metadata tag.
+          - type: predicate
+            expr: >-
+              test == true && validationIsValid == true && validationMessageCount >= 1 &&
+              street1 == "1 Market St" && city == "San Francisco" && zip == "94105-1420" &&
+              isComplete == true && metadata == ""
+
+    - id: plain
+      node: createAddress
+      dependsOn: [sloppy]
+      description: The same address written correctly, created without validating
+      values:
+        name: AAT Shippo
+        street1: 1 Market St
+        city: San Francisco
+        state: CA
+        zip: "94105"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && metadata == "aat-shippo" && validationMessageCount == 0
+
+    - id: revalidated
+      node: validateAddress
+      dependsOn: [plain]
+      isGoal: true
+      description: Validated after the fact, which answers a new address object
+      values:
+        addressId: {from: plain.addressId}
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              isValid == true && messageCount >= 1 && messageCodes == "Default Match" &&
+              street1 == "1 Market St" && city == "San Francisco" && test == true &&
+              isComplete == true
+          # The validated address is a new object, not the one that was validated.
+          - type: predicate
+            expr: '!(addressId == "{{plain.addressId}}")'

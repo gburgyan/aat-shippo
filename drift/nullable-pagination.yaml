@@ -1,0 +1,42 @@
+# Shippo's own spec marks nothing nullable, and the API sends null constantly. Run it both ways:
+#
+#   aat run plan drift/nullable-pagination.yaml                    # passes; findings are recorded
+#   aat run plan drift/nullable-pagination.yaml --env test-strict  # fails on Shippo's own spec
+#
+# Under test-strict the read fails with the spec's own words:
+#
+#   $.next: got null, want string
+#   $.previous: got null, want string
+#
+# That is why the environments validate in auto: every list read in the package would fail for a
+# reason that is the spec's, not the caller's. The plan itself asserts the behaviour — the ends of a
+# listing carry no next or previous — so it stays true either way. It sits outside plans/, so a
+# batch never runs it.
+intent:
+  goal: onlyPage
+  description: A listing's next and previous are null at the ends, where the spec types them string
+
+execution:
+  steps:
+    - id: onlyPage
+      node: listCarrierAccounts
+      isGoal: true
+      description: The carrier accounts, which fit on one page, so both ends are null
+      values:
+        pageSize: 100
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: count == 15
+          # No next page: the `next` the API sent was null, so nothing was parsed out of it.
+          - type: fieldAbsent
+            path: nextPage
+          # And the body itself carries them as null, not as the strings the spec declares.
+          - type: fieldAbsent
+            path: next
+            raw: true
+          - type: fieldAbsent
+            path: previous
+            raw: true

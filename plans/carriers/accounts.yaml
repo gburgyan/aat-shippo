@@ -1,0 +1,52 @@
+# The carrier accounts a test token can rate with: fifteen of them, every one active, in test mode,
+# and provided by Shippo, so nothing here needs carrier credentials. Then one account read on its
+# own, with its service levels.
+intent:
+  goal: usps
+  description: A test token comes with fifteen active Shippo-provided carrier accounts
+
+execution:
+  steps:
+    - id: accounts
+      node: listCarrierAccounts
+      description: Every carrier account on the token, with its service levels
+      values:
+        serviceLevels: true
+        pageSize: 100
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              count == 15 && activeCount == 15 && shippoAccountCount == 15 && liveCount == 0 &&
+              serviceLevelCount > 100 &&
+              carriers == "canada_post,chronopost,colissimo,correos,couriersplease,deutsche_post,dhl_express,dpd_de,dpd_uk,fedex,hermes_uk,lso,ups,ups,usps"
+          - type: fieldAbsent
+            path: nextPage
+
+    - id: usps
+      node: getCarrierAccount
+      dependsOn: [accounts]
+      isGoal: true
+      description: The USPS account, read on its own, which carries no service levels
+      values:
+        carrierAccountId:
+          from: accounts.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              carrier == "usps" && carrierName == "USPS" && active == true &&
+              isShippoAccount == true && test == true
+          # A single read leaves service_levels out of the body entirely: the listing above asked
+          # for them and got 12 for this account, and this read gets none.
+          - type: predicate
+            expr: serviceLevelCount == 0 && serviceLevels == ""
+          - type: fieldAbsent
+            path: service_levels
+            raw: true

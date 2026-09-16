@@ -1,0 +1,58 @@
+# An address created, read back, and found in the listing. Addresses are immutable and cannot be
+# deleted, so nothing cleans this up: it carries the package's metadata tag instead, and the listing
+# counts the tagged ones apart from a co-tenant's.
+intent:
+  goal: listed
+  description: An address is created in test mode, tagged, immutable, and listed
+
+execution:
+  steps:
+    - id: create
+      node: createAddress
+      description: A complete US address, tagged aat-shippo
+      values:
+        name: AAT Shippo
+        street1: 215 Clayton St.
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              test == true && metadata == "aat-shippo" && isComplete == true &&
+              country == "US" && city == "San Francisco" && zip == "94117" &&
+              validationMessageCount == 0
+          - type: fieldAbsent
+            path: validationIsValid
+
+    - id: read
+      node: getAddress
+      dependsOn: [create]
+      description: The same address, unchanged
+      values:
+        addressId: {from: create.addressId}
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              addressId == "{{create.addressId}}" && test == true &&
+              metadata == "aat-shippo" && street1 == "{{create.street1}}" &&
+              zip == "{{create.zip}}" && isComplete == true
+
+    - id: listed
+      node: listAddresses
+      dependsOn: [read]
+      isGoal: true
+      description: The first page of addresses, newest first, with the package's counted apart
+      values:
+        pageSize: 25
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: count > 0 && ourCount > 0 && ourCount <= count && liveCount == 0

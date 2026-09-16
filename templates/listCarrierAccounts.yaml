@@ -1,0 +1,40 @@
+adapter: listCarrierAccounts
+protocol: http
+
+request:
+  method: GET
+  path: /carrier_accounts?results={{pageSize}}{{?page}}&page={{page}}{{/page}}{{?serviceLevels}}&service_levels={{serviceLevels}}{{/serviceLevels}}{{?carrier}}&carrier={{carrier}}{{/carrier}}
+
+response:
+  extract:
+    accounts:
+      path: results
+      fields:
+        carrierAccountId: object_id
+        carrier: carrier
+        active: active
+    count: 'results.#'
+  # The page's carrier tokens as one sorted string, the counts a plan asserts, and the next page
+  # number parsed out of the `next` URL: Shippo pages by number but hands back a whole URL.
+  transform: |
+    local accounts = json_path("results") or {}
+    local tokens, active, shippo, levels, live = {}, 0, 0, 0, 0
+    for _, a in ipairs(accounts) do
+      table.insert(tokens, tostring(a.carrier))
+      if a.active == true then active = active + 1 end
+      if a.is_shippo_account == true then shippo = shippo + 1 end
+      if a.test == false then live = live + 1 end
+      levels = levels + #(a.service_levels or {})
+    end
+    table.sort(tokens)
+    outputs.carriers = table.concat(tokens, ",") .. ""
+    outputs.activeCount = active
+    outputs.shippoAccountCount = shippo
+    outputs.serviceLevelCount = levels
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

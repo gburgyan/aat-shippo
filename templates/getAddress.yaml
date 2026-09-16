@@ -1,0 +1,33 @@
+adapter: getAddress
+protocol: http
+
+request:
+  method: GET
+  path: /addresses/{{addressId}}
+
+response:
+  extract:
+    addressId: object_id
+    name:
+      path: name
+      default: ""
+    street1:
+      path: street1
+      default: ""
+    city:
+      path: city
+      default: ""
+    state:
+      path: state
+      default: ""
+    zip:
+      path: zip
+      default: ""
+    country: country
+    isComplete:
+      path: is_complete
+      default: false
+    test: test
+    metadata:
+      path: metadata
+      default: ""

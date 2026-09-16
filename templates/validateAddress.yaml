@@ -1,0 +1,36 @@
+adapter: validateAddress
+protocol: http
+
+request:
+  method: GET
+  path: /addresses/{{addressId}}/validate
+
+response:
+  extract:
+    addressId: object_id
+    street1:
+      path: street1
+      default: ""
+    city:
+      path: city
+      default: ""
+    zip:
+      path: zip
+      default: ""
+    isComplete:
+      path: is_complete
+      default: false
+    test: test
+  # The verdict and its messages: the codes as one sorted string a plan can compare, and the first
+  # message's text, since a valid address can still carry advice.
+  transform: |
+    local vr = json_path("validation_results") or {}
+    local messages = vr.messages or {}
+    local codes = {}
+    for _, m in ipairs(messages) do table.insert(codes, tostring(m.code)) end
+    table.sort(codes)
+    outputs.isValid = vr.is_valid == true
+    outputs.messageCount = #messages
+    outputs.messageCodes = table.concat(codes, ",") .. ""
+    outputs.messageText = (messages[1] and tostring(messages[1].text)) or ""
+    return outputs
