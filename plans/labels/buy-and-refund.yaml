@@ -1,0 +1,190 @@
+# The two-step purchase, and the only way to un-buy a label.
+#
+# Rate a shipment, buy one of its rates, and read the label back. Then refund it explicitly, and
+# watch the label's own status follow. Cleanup would refund it anyway — every label node in this
+# graph is paired with createRefund — so this plan proves the pairing's mechanism by doing it in the
+# open, and cleanup finds nothing left to do.
+intent:
+  goal: refunded
+  description: A label is bought from a rate, carries a tracking number, and is refunded
+
+execution:
+  steps:
+    - id: from
+      node: createAddress
+      description: The sender, in San Francisco
+      values:
+        name: AAT Shippo
+        street1: 215 Clayton St.
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+
+    - id: to
+      node: createAddress
+      dependsOn: [from]
+      description: The recipient, in New York
+      values:
+        name: AAT Recipient
+        street1: 350 Fifth Avenue
+        city: New York
+        state: NY
+        zip: "10118"
+        country: US
+        phone: "+15553419394"
+        email: aat-shippo@example.com
+
+    - id: parcel
+      node: createParcel
+      dependsOn: [to]
+      values:
+        length: "10"
+        width: "8"
+        height: "4"
+        distanceUnit: in
+        weight: "2"
+        massUnit: lb
+
+    - id: shipment
+      node: createShipment
+      dependsOn: [parcel]
+      description: Rated before answering, so a rate is there to buy
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        async: false
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: test == true && status == "SUCCESS" && rateCount > 0
+
+    - id: rates
+      node: listShipmentRates
+      dependsOn: [shipment]
+      description: The rates, so the cheapest can be bought
+      values:
+        shipmentId: {from: shipment.shipmentId}
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: count > 0 && cheapestRateId != ""
+
+    - id: label
+      node: createTransaction
+      dependsOn: [rates]
+      # The rate is pinned to USPS rather than taken from cheapestRateId. UPS quotes this lane and
+      # is often the cheapest, but buying one of its labels answers 201 with status ERROR and
+      # `ups_registration_error`: the account can rate with UPS but not purchase. Rating and buying
+      # are separate permissions, and only USPS has both here.
+      description: Buy a USPS rate as a 4x6 PDF label
+      values:
+        rateId:
+          from: rates.rates
+          select:
+            strategy: match
+            field: rateId
+            filter: provider == "USPS"
+        labelFileType: PDF_4x6
+        async: false
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          # A live token buying a real label is the one mistake a refund cannot undo.
+          - type: predicate
+            expr: >-
+              test == true && status == "SUCCESS" && metadata == "aat-shippo" &&
+              labelFormat == "pdf" && trackingNumber != "" &&
+              trackingUrlProvider != "" && messageCount == 0
+          - type: fieldExists
+            path: labelUrl
+
+    - id: read
+      node: getTransaction
+      dependsOn: [label]
+      description: The label read back, still bought
+      values:
+        transactionId: {from: label.transactionId}
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              transactionId == "{{label.transactionId}}" && status == "SUCCESS" &&
+              trackingNumber == "{{label.trackingNumber}}" && test == true &&
+              metadata == "aat-shippo"
+
+    - id: refund
+      node: createRefund
+      dependsOn: [read]
+      description: Refund it, which is the only way to un-buy a label
+      values:
+        transactionId: {from: label.transactionId}
+        async: false
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              transactionId == "{{label.transactionId}}" && test == true &&
+              status in ["QUEUED", "PENDING", "SUCCESS"]
+
+    - id: pending
+      node: getRefund
+      dependsOn: [refund]
+      # The refund does not settle quickly: one stayed PENDING for at least 90 seconds, which is
+      # what a carrier taking days to accept a refund looks like through the API. So the refund
+      # object is read once rather than waited on, and the label's status is what the plan waits for.
+      description: The refund, read back while the carrier considers it
+      values:
+        refundId: {from: refund.refundId}
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: >-
+              refundId == "{{refund.refundId}}" && test == true &&
+              transactionId == "{{label.transactionId}}" &&
+              status in ["QUEUED", "PENDING", "SUCCESS"]
+
+    - id: refunded
+      node: getTransaction
+      dependsOn: [pending]
+      isGoal: true
+      description: The label's own status follows the refund at once
+      values:
+        transactionId: {from: label.transactionId}
+      repeat:
+        until: status in ["REFUNDPENDING", "REFUNDED"]
+        interval: 1s
+        max: 15
+        timeout: 30s
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              transactionId == "{{label.transactionId}}" && test == true &&
+              status in ["REFUNDPENDING", "REFUNDED"]
+
+    - id: refundListed
+      node: listRefunds
+      dependsOn: [refunded]
+      description: The refund appears in the account's refunds, which carry no metadata of their own
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          - type: predicate
+            expr: count > 0 && liveCount == 0

@@ -13,17 +13,24 @@ response:
   # cannot be undone by a refund.
   transform: |
     local rows = json_path("results") or {}
-    local all, ours, live = {}, {}, 0
+    local all, ours, unrefunded, live = {}, {}, {}, 0
     for _, t in ipairs(rows) do
       table.insert(all, {transactionId = t.object_id, status = t.status})
       if type(t.metadata) == "string" and t.metadata:sub(1, 10) == "aat-shippo" then
         table.insert(ours, {transactionId = t.object_id, status = t.status})
+        -- A refunded label reads REFUNDPENDING, then REFUNDED; one still in SUCCESS was bought
+        -- and never refunded.
+        if t.status == "SUCCESS" then
+          table.insert(unrefunded, {transactionId = t.object_id, status = t.status})
+        end
       end
       if t.test == false then live = live + 1 end
     end
     if #all > 0 then outputs.transactions = all end
     outputs.ourCount = #ours
     if #ours > 0 then outputs.ourLabels = ours end
+    outputs.ourUnrefundedCount = #unrefunded
+    if #unrefunded > 0 then outputs.ourUnrefunded = unrefunded end
     outputs.liveCount = live
     local next_url = json_path("next")
     if type(next_url) == "string" then

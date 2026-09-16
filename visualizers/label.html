@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Label</title>
+<style>
+  body {
+    margin: 0;
+    padding: 12px;
+    background: var(--color-bg, #0f1117);
+    color: var(--color-text, #e4e4e7);
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 13px;
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 10px; }
+  h1 { margin: 0; font-size: 15px; }
+  .muted { color: var(--color-text-secondary, #a1a1aa); }
+  .mono { font-family: var(--font-mono, ui-monospace, monospace); }
+  .status {
+    display: inline-block;
+    padding: 1px 7px;
+    border: 1px solid var(--color-border, #27272a);
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  .status.SUCCESS { border-color: var(--color-success, #4ade80); color: var(--color-success, #4ade80); }
+  .status.ERROR { border-color: var(--color-error, #f87171); color: var(--color-error, #f87171); }
+  .status.REFUNDED, .status.REFUNDPENDING { border-color: var(--color-warning, #fbbf24); color: var(--color-warning, #fbbf24); }
+  .layout { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .sheet {
+    background: #ffffff;
+    padding: 8px;
+    border-radius: 3px;
+    max-width: 340px;
+  }
+  .sheet img { display: block; max-width: 100%; height: auto; }
+  .facts { flex: 1 1 260px; min-width: 240px; }
+  .facts dt { color: var(--color-text-secondary, #a1a1aa); font-size: 11px; margin-top: 8px; }
+  .facts dd { margin: 2px 0 0; word-break: break-all; }
+  .facts dd a { color: var(--color-primary, #60a5fa); }
+  .fallback {
+    border: 1px dashed var(--color-border, #27272a);
+    border-radius: 3px;
+    padding: 14px;
+    max-width: 340px;
+  }
+  .msgs { margin-top: 12px; }
+  .msgs h2 { font-size: 13px; margin: 0 0 6px; }
+  .msgs li { margin-bottom: 3px; }
+  .src { font-family: var(--font-mono, ui-monospace, monospace); color: var(--color-text-secondary, #a1a1aa); }
+</style>
+</head>
+<body>
+<div id="root"><p class="muted">Waiting for data…</p></div>
+<script>
+(function () {
+  'use strict';
+
+  // Build nodes with textContent only: the body comes from the API under test.
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      if (key === 'text') {
+        node.textContent = attrs[key];
+      } else {
+        node.setAttribute(key, attrs[key]);
+      }
+    });
+    (children || []).forEach(function (child) {
+      if (child) node.appendChild(child);
+    });
+    return node;
+  }
+
+  function text(value) {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function https(url) {
+    return typeof url === 'string' && url.indexOf('https://') === 0 ? url : '';
+  }
+
+  // The label's format is in its URL, not in the body: Shippo does not echo label_file_type.
+  function formatOf(url) {
+    var m = /\.(\w+)(\?|$)/.exec(url || '');
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // The host allows images over https, so a PNG label is shown as itself. A PDF or ZPL cannot be
+  // drawn in an image, so it gets a link instead.
+  function sheet(url, format) {
+    if (!url) return null;
+    if (format === 'png' || format === 'jpg' || format === 'jpeg' || format === 'gif') {
+      return el('div', { 'class': 'sheet' }, [el('img', { src: url, alt: 'Shipping label' })]);
+    }
+    return el('div', { 'class': 'fallback' }, [
+      el('p', { 'class': 'muted', text: 'A ' + (format ? format.toUpperCase() : 'label') + ' file, which cannot be drawn here.' }),
+      el('p', {}, [el('a', { href: url, target: '_blank', rel: 'noreferrer', text: 'Open the label' })])
+    ]);
+  }
+
+  function facts(tx, format) {
+    var rows = [];
+    function add(label, value, asLink) {
+      if (!value) return;
+      rows.push(el('dt', { text: label }));
+      if (asLink) {
+        rows.push(el('dd', {}, [el('a', { href: value, target: '_blank', rel: 'noreferrer', 'class': 'mono', text: value })]));
+      } else {
+        rows.push(el('dd', { 'class': 'mono', text: value }));
+      }
+    }
+    add('Tracking number', text(tx.tracking_number));
+    add('Format', format ? format.toUpperCase() : '');
+    add('ETA', text(tx.eta));
+    add('Parcel', text(tx.parcel));
+    add('Track with the carrier', https(tx.tracking_url_provider), true);
+    add('QR code', https(tx.qr_code_url), true);
+    add('Commercial invoice', https(tx.commercial_invoice_url), true);
+    return el('dl', { 'class': 'facts' }, rows);
+  }
+
+  function render(data) {
+    var root = document.getElementById('root');
+    root.textContent = '';
+
+    var tx = data && typeof data === 'object' ? data : {};
+    var url = https(tx.label_url);
+    var format = formatOf(url);
+    var status = text(tx.status);
+
+    root.appendChild(el('header', {}, [
+      el('h1', { text: url ? 'Shipping label' : 'No label' }),
+      status ? el('span', { 'class': 'status ' + status, text: status }) : null,
+      tx.test === true ? el('span', { 'class': 'muted', text: 'test mode' }) : null
+    ]));
+
+    root.appendChild(el('div', { 'class': 'layout' }, [
+      sheet(url, format),
+      facts(tx, format)
+    ]));
+
+    var messages = Array.isArray(tx.messages) ? tx.messages : [];
+    if (messages.length) {
+      root.appendChild(el('div', { 'class': 'msgs' }, [
+        el('h2', { text: 'What the carrier said (' + messages.length + ')' }),
+        el('ul', {}, messages.map(function (m) {
+          m = m || {};
+          return el('li', {}, [
+            el('span', { 'class': 'src', text: text(m.source) + ': ' }),
+            el('span', { text: text(m.text) })
+          ]);
+        }))
+      ]));
+    }
+  }
+
+  window.addEventListener('message', function (event) {
+    var msg = event.data;
+    if (!msg || msg.type !== 'aat-visualizer-data') return;
+    Object.keys(msg.theme || {}).forEach(function (name) {
+      document.documentElement.style.setProperty(name, msg.theme[name]);
+    });
+    render(msg.body);
+    requestAnimationFrame(function () {
+      parent.postMessage({ type: 'aat-visualizer-resize', height: document.documentElement.scrollHeight }, '*');
+    });
+  });
+
+  parent.postMessage({ type: 'aat-visualizer-ready' }, '*');
+})();
+</script>
+</body>
+</html>

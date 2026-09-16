@@ -1,0 +1,93 @@
+# The one-step purchase. Instead of rating a shipment and buying one of its rates, an Instalabel
+# takes the shipment, a carrier account, and a service level token, and answers a bought label.
+#
+# The reply differs from the two-step one: where a rate-based purchase echoes the rate id it bought,
+# an Instalabel answers a rate object, since no rate existed before the call. Cleanup refunds it.
+intent:
+  goal: label
+  description: A label bought in one call answers a rate object rather than a rate id
+
+execution:
+  steps:
+    - id: carriers
+      node: listCarrierAccounts
+      description: The carrier accounts, to name USPS by its object id rather than hardcode it
+      values:
+        pageSize: 100
+      retry:
+        max: 3
+        on: [429]
+
+    - id: from
+      node: createAddress
+      dependsOn: [carriers]
+      description: The sender, in San Francisco
+      values:
+        name: AAT Shippo
+        street1: 215 Clayton St.
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+
+    - id: to
+      node: createAddress
+      dependsOn: [from]
+      description: The recipient, in New York
+      values:
+        name: AAT Recipient
+        street1: 350 Fifth Avenue
+        city: New York
+        state: NY
+        zip: "10118"
+        country: US
+        phone: "+15553419394"
+        email: aat-shippo@example.com
+
+    - id: parcel
+      node: createParcel
+      dependsOn: [to]
+      values:
+        length: "10"
+        width: "8"
+        height: "4"
+        distanceUnit: in
+        weight: "2"
+        massUnit: lb
+
+    - id: label
+      node: createTransactionInstant
+      dependsOn: [parcel]
+      isGoal: true
+      # USPS, because it is the only carrier on this account that can buy as well as rate.
+      description: Buy USPS Priority in one call, with no rate created first
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        carrierAccountId:
+          from: carriers.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+        serviceLevelToken: usps_priority
+        labelFileType: PDF_4x6
+        async: false
+      assertions:
+        mechanical:
+          - type: status
+            expect: 201
+          - type: predicate
+            expr: >-
+              test == true && status == "SUCCESS" && metadata == "aat-shippo" &&
+              labelFormat == "pdf" && trackingNumber != "" &&
+              trackingUrlProvider != "" && messageCount == 0
+          # The rate came back as an object, not an id: this is what tells the two purchases apart.
+          - type: predicate
+            expr: rateProvider == "USPS" && rateAmount != ""
+          - type: fieldExists
+            path: labelUrl

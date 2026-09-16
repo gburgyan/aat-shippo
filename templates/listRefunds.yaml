@@ -1,0 +1,31 @@
+adapter: listRefunds
+protocol: http
+
+# The trailing slash is what the spec declares and what the API answers on. The spec declares no
+# page or results parameters for this operation, so none are sent.
+request:
+  method: GET
+  path: /refunds/
+
+response:
+  extract:
+    refunds:
+      path: results
+      fields:
+        refundId: object_id
+        status: status
+        transactionId: transaction
+    count: 'results.#'
+  transform: |
+    local rows = json_path("results") or {}
+    local live = 0
+    for _, r in ipairs(rows) do
+      if r.test == false then live = live + 1 end
+    end
+    outputs.liveCount = live
+    local next_url = json_path("next")
+    if type(next_url) == "string" then
+      local page = string.match(next_url, "[?&]page=(%d+)")
+      if page then outputs.nextPage = tonumber(page) end
+    end
+    return outputs

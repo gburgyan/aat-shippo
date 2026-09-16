@@ -162,8 +162,11 @@ concepts:
       Almost nothing in Shippo can be deleted: addresses, parcels, shipments, customs objects,
       orders and manifests are permanent. Cleanup is therefore a refund, not a delete, and the
       guards are what keep the account honest. plans/zz-guard/no-live-labels.yaml pages every label
-      created since the environment's packageEpoch and fails if any was bought with a live token.
-      Objects from other work on the same account are counted apart and never fail a guard.
+      created since the environment's packageEpoch and fails if any was bought with a live token;
+      plans/zz-guard/no-unrefunded-labels.yaml fails if any label the package bought is still in
+      SUCCESS, which means a cleanup did not run. Both assert ourCount > 0 as well, so neither can
+      pass by finding nothing. Objects from other work on the same account are counted apart and
+      never fail a guard.
     applies_to: [packageEpoch, createdGte, liveCount, ourCount]
     constraint: assert only ourCount and liveCount; never assert the account-wide count
 

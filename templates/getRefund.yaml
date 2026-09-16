@@ -1,0 +1,13 @@
+adapter: getRefund
+protocol: http
+
+request:
+  method: GET
+  path: /refunds/{{refundId}}
+
+response:
+  extract:
+    refundId: object_id
+    status: status
+    transactionId: transaction
+    test: test

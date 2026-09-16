@@ -1,0 +1,61 @@
+adapter: createTransactionInstant
+protocol: http
+
+request:
+  method: POST
+  path: /transactions
+  headers:
+    Content-Type: application/json
+  # The Instalabel body: the shipment inline instead of a rate, with the carrier and service level
+  # named directly.
+  body: |-
+    {
+      "carrier_account": "{{carrierAccountId}}",
+      "servicelevel_token": "{{serviceLevelToken}}",
+      "metadata": "{{metadata}}",
+      "shipment": {
+        "address_from": "{{addressFrom}}",
+        "address_to": "{{addressTo}}",
+        "parcels": {{parcels}}
+      }{{?labelFileType}},
+      "label_file_type": "{{labelFileType}}"{{/labelFileType}}{{?async}},
+      "async": {{async}}{{/async}}
+    }
+
+response:
+  extract:
+    transactionId: object_id
+    status: status
+    labelUrl:
+      path: label_url
+      default: ""
+    trackingNumber:
+      path: tracking_number
+      default: ""
+    trackingUrlProvider:
+      path: tracking_url_provider
+      default: ""
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  # An Instalabel answers a rate object rather than a rate id, so the carrier and price are read
+  # from it. That difference is the point of plans/labels/instalabel.yaml.
+  transform: |
+    -- Shippo does not echo label_file_type, so the format delivered is read from the URL.
+    local url = json_path("label_url")
+    outputs.labelFormat = ""
+    if type(url) == "string" then
+      local ext = string.match(url, "%.(%w+)%?") or string.match(url, "%.(%w+)$")
+      if ext then outputs.labelFormat = string.lower(ext) end
+    end
+    local rate = json_path("rate")
+    if type(rate) == "table" then
+      outputs.rateProvider = tostring(rate.provider or "")
+      outputs.rateAmount = tostring(rate.amount or "")
+    else
+      outputs.rateProvider = ""
+      outputs.rateAmount = ""
+    end
+    outputs.messageCount = #(json_path("messages") or {})
+    return outputs

@@ -4,8 +4,7 @@
 # account are counted apart and never fail it.
 #
 # The name sorts it last in a batch; run the batch sequentially, since a parallel one can still be
-# buying when this reads. While the package buys no labels, ourCount is 0 and only liveCount is
-# asserted; the label plans tighten it.
+# buying when this reads. ourCount is asserted too, so the guard cannot pass by finding nothing.
 intent:
   goal: labels
   description: No label on this account was bought with a live token since the package started
@@ -32,4 +31,4 @@ execution:
           - type: status
             expect: 200
           - type: predicate
-            expr: liveCount == 0 && ourCount <= count
+            expr: liveCount == 0 && ourCount > 0 && ourCount <= count

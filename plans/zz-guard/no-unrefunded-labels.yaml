@@ -1,0 +1,37 @@
+# Every label this package bought since it started has been refunded.
+#
+# A label cannot be deleted, so a guard cannot check that nothing is left; it checks that nothing is
+# left *bought*. A refunded label reads REFUNDPENDING and then REFUNDED, so one still in SUCCESS was
+# bought and never refunded, which means a cleanup did not run. Labels from other work on the same
+# account carry no aat-shippo tag and are counted apart.
+#
+# The name sorts it last in a batch. Run the batch sequentially: a parallel one can still be buying
+# when this reads.
+intent:
+  goal: labels
+  description: No label this package bought is left unrefunded, across every page since it started
+
+execution:
+  steps:
+    - id: labels
+      node: listTransactions
+      isGoal: true
+      description: Every page of labels since packageEpoch, counted by source and by state
+      values:
+        pageSize: 100
+        createdGte: "{{env.packageEpoch}}"
+      repeat:
+        next: {page: nextPage}
+        collect: [count, ourCount, ourLabels, ourUnrefundedCount, ourUnrefunded, liveCount]
+        max: 100
+      retry:
+        max: 3
+        on: [429]
+      assertions:
+        mechanical:
+          - type: status
+            expect: 200
+          # ourCount proves the guard is looking at this package's labels at all, rather than
+          # passing because it found nothing.
+          - type: predicate
+            expr: ourCount > 0 && ourUnrefundedCount == 0 && liveCount == 0 && ourCount <= count

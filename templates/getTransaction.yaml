@@ -1,0 +1,24 @@
+adapter: getTransaction
+protocol: http
+
+request:
+  method: GET
+  path: /transactions/{{transactionId}}
+
+response:
+  extract:
+    transactionId: object_id
+    status: status
+    labelUrl:
+      path: label_url
+      default: ""
+    trackingNumber:
+      path: tracking_number
+      default: ""
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  transform: |
+    outputs.messageCount = #(json_path("messages") or {})
+    return outputs

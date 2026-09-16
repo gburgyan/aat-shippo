@@ -1,0 +1,20 @@
+adapter: createRefund
+protocol: http
+
+request:
+  method: POST
+  path: /refunds
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "transaction": "{{transactionId}}"{{?async}},
+      "async": {{async}}{{/async}}
+    }
+
+response:
+  extract:
+    refundId: object_id
+    status: status
+    transactionId: transaction
+    test: test

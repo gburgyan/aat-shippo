@@ -619,6 +619,20 @@ nodes:
             type: string
           - name: status
             type: string
+      - name: ourUnrefundedCount
+        type: integer
+        description: >-
+          The package's labels still in SUCCESS — bought and not refunded. A label cannot be
+          deleted, so this, not a count of what is left, is what a guard checks.
+      - name: ourUnrefunded
+        type: ourLabel[]
+        optional: true
+        description: Those labels, when there are any, so a failing guard can name them
+        elementFields:
+          - name: transactionId
+            type: string
+          - name: status
+            type: string
       - name: liveCount
         type: integer
         description: Labels on the page not in test mode; a live token bought a real label
@@ -924,3 +938,267 @@ nodes:
         description: An https URL to the carrier's logo, which the rates visualizer shows
       - name: test
         type: boolean
+
+  # --- Labels and refunds -----------------------------------------------------------------
+  createTransaction:
+    description: >-
+      Buy a label from a rate (POST /transactions, 201). This is the two-step purchase: rate the
+      shipment, then buy one of its rates. A successful transaction carries an https `label_url` to
+      the label itself, a carrier tracking number, and a tracking URL; `label_file_type` chooses the
+      format, from PNG and ZPLII to PDF at several sizes. A rate older than seven days cannot be
+      bought. **Cleanup refunds the label** — a label cannot be deleted, and a refund is the only
+      way to un-buy one. Proven by plans/labels/buy-and-refund.yaml.
+    adapter: createTransaction
+    tags: [labels, transactions]
+    oas:
+      operationId: CreateTransaction
+    # A live token would buy a real label. This is the one mistake a refund cannot undo, so stop at
+    # the first one.
+    errorDetection:
+      - path: test
+        rule: equals
+        value: false
+    inputs:
+      - name: rateId
+        type: string
+        default:
+          from: listShipmentRates.rates
+          select:
+            strategy: first
+            field: rateId
+      - name: labelFileType
+        type: string
+        optional: true
+        description: >-
+          PNG, PNG_2.3x7.5, PDF, PDF_2.3x7.5, PDF_4x6, PDF_4x8, PDF_A4, PDF_A5, PDF_A6, or ZPLII.
+          Shippo does not echo it back; the label URL's extension is what says which was delivered.
+      - name: async
+        type: boolean
+        optional: true
+        description: 'false buys before answering; Shippo''s default is true'
+      - name: metadata
+        type: string
+        default: aat-shippo
+    outputs:
+      - name: transactionId
+        type: string
+        display: Label
+      - name: status
+        type: string
+        description: WAITING, QUEUED, SUCCESS, ERROR, REFUNDED, REFUNDPENDING, or REFUNDREJECTED
+      - name: labelUrl
+        type: string
+        description: An https URL to the label, which the label visualizer shows; "" until it succeeds
+      - name: labelFormat
+        type: string
+        description: >-
+          The label URL's extension, lowercased, which is the format actually delivered. Shippo does
+          not echo label_file_type on the transaction, so this is read from the URL.
+      - name: trackingNumber
+        type: string
+      - name: trackingUrlProvider
+        type: string
+      - name: qrCodeUrl
+        type: string
+        description: An https URL to a QR code; "" unless the carrier offers one
+      - name: rateId
+        type: string
+        description: The rate bought; an Instalabel answers a rate object instead of an id
+      - name: parcelId
+        type: string
+      - name: eta
+        type: string
+      - name: messageCount
+        type: integer
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+    cleanup:
+      node: createRefund
+      when: 'status == "SUCCESS"'
+
+  createTransactionInstant:
+    description: >-
+      Buy a label without rating first (POST /transactions, 201) — Shippo calls it an Instalabel. In
+      place of a rate it takes the shipment inline, a carrier account, and a service level token, so
+      one call does what createShipment and createTransaction do together. The transaction answers a
+      rate **object** rather than a rate id, which is how the two purchases differ in their replies.
+      **Cleanup refunds the label.** Proven by plans/labels/instalabel.yaml.
+    adapter: createTransactionInstant
+    tags: [labels, transactions]
+    oas:
+      operationId: CreateTransaction
+    errorDetection:
+      - path: test
+        rule: equals
+        value: false
+    inputs:
+      - name: addressFrom
+        type: string
+      - name: addressTo
+        type: string
+      - name: parcels
+        type: string[]
+      - name: carrierAccountId
+        type: string
+      - name: serviceLevelToken
+        type: string
+        description: A service level of that carrier account, such as usps_priority
+      - name: labelFileType
+        type: string
+        optional: true
+      - name: async
+        type: boolean
+        optional: true
+      - name: metadata
+        type: string
+        default: aat-shippo
+    outputs:
+      - name: transactionId
+        type: string
+        display: Label
+      - name: status
+        type: string
+      - name: labelUrl
+        type: string
+      - name: labelFormat
+        type: string
+      - name: trackingNumber
+        type: string
+      - name: trackingUrlProvider
+        type: string
+      - name: rateProvider
+        type: string
+        description: The carrier, read from the rate object an Instalabel answers with
+      - name: rateAmount
+        type: string
+      - name: messageCount
+        type: integer
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+    cleanup:
+      node: createRefund
+      when: 'status == "SUCCESS"'
+
+  getTransaction:
+    description: >-
+      Read a label by its object id (GET /transactions/{id}, 200). This is what a poll reads while a
+      purchase is QUEUED or WAITING, and what shows a label's status after it has been refunded.
+      Proven by plans/labels/buy-and-refund.yaml.
+    adapter: getTransaction
+    tags: [labels, transactions]
+    oas:
+      operationId: GetTransaction
+    inputs:
+      - name: transactionId
+        type: string
+        default:
+          from: createTransaction.transactionId
+    outputs:
+      - name: transactionId
+        type: string
+      - name: status
+        type: string
+        display: Status
+      - name: labelUrl
+        type: string
+      - name: trackingNumber
+        type: string
+      - name: messageCount
+        type: integer
+      - name: test
+        type: boolean
+      - name: metadata
+        type: string
+
+  createRefund:
+    description: >-
+      Refund a label (POST /refunds, 201), which is the only way to un-buy one: labels cannot be
+      deleted. The refund is asynchronous, running QUEUED → PENDING → SUCCESS | ERROR, and in test
+      mode it does **not** settle quickly: one stayed PENDING for at least 90 seconds, which matches
+      a carrier taking days to accept a refund in the real world. What does happen at once is that
+      the label's own status becomes REFUNDPENDING, so that, not the refund's status, is what a plan
+      waits for. This is what every label's cleanup runs, and the shape of cleanup throughout the
+      package — a refund, never a delete. Proven by plans/labels/buy-and-refund.yaml.
+    adapter: createRefund
+    tags: [labels, refunds, cleanup]
+    oas:
+      operationId: CreateRefund
+    inputs:
+      - name: transactionId
+        type: string
+        default:
+          from: createTransaction.transactionId
+      - name: async
+        type: boolean
+        optional: true
+    outputs:
+      - name: refundId
+        type: string
+        display: Refund
+      - name: status
+        type: string
+        description: QUEUED, PENDING, SUCCESS, or ERROR
+      - name: transactionId
+        type: string
+      - name: test
+        type: boolean
+
+  getRefund:
+    description: >-
+      Read a refund by its object id (GET /refunds/{id}, 200), which is what a poll reads while it
+      is QUEUED or PENDING. Proven by plans/labels/buy-and-refund.yaml.
+    adapter: getRefund
+    tags: [refunds]
+    oas:
+      operationId: GetRefund
+    inputs:
+      - name: refundId
+        type: string
+        default:
+          from: createRefund.refundId
+    outputs:
+      - name: refundId
+        type: string
+      - name: status
+        type: string
+        display: Status
+      - name: transactionId
+        type: string
+      - name: test
+        type: boolean
+
+  listRefunds:
+    description: >-
+      List the account's refunds (GET /refunds/, 200) — note the trailing slash, which the spec
+      declares and the API answers on. The response is a paginated list with `next` and `previous`,
+      but **the spec declares no `page` or `results` parameters for this operation**, alone among
+      the listings, so the node sends none and reads the first page. Refunds carry no metadata of
+      their own, so they are matched to the package by the label they refund. Proven by
+      plans/labels/buy-and-refund.yaml.
+    adapter: listRefunds
+    tags: [refunds]
+    oas:
+      operationId: ListRefunds
+    outputs:
+      - name: refunds
+        type: refund[]
+        optional: true
+        elementFields:
+          - name: refundId
+            type: string
+          - name: status
+            type: string
+          - name: transactionId
+            type: string
+      - name: count
+        type: integer
+        display: Refunds
+      - name: liveCount
+        type: integer
+      - name: nextPage
+        type: integer
+        optional: true

@@ -1,0 +1,62 @@
+adapter: createTransaction
+protocol: http
+
+request:
+  method: POST
+  path: /transactions
+  headers:
+    Content-Type: application/json
+  body: |-
+    {
+      "rate": "{{rateId}}",
+      "metadata": "{{metadata}}"{{?labelFileType}},
+      "label_file_type": "{{labelFileType}}"{{/labelFileType}}{{?async}},
+      "async": {{async}}{{/async}}
+    }
+
+response:
+  extract:
+    transactionId: object_id
+    status: status
+    labelUrl:
+      path: label_url
+      default: ""
+    trackingNumber:
+      path: tracking_number
+      default: ""
+    trackingUrlProvider:
+      path: tracking_url_provider
+      default: ""
+    qrCodeUrl:
+      path: qr_code_url
+      default: ""
+    parcelId:
+      path: parcel
+      default: ""
+    eta:
+      path: eta
+      default: ""
+    test: test
+    metadata:
+      path: metadata
+      default: ""
+  # `rate` is a string for a rate-based purchase and an object for an Instalabel, so it is read
+  # both ways rather than assumed.
+  transform: |
+    -- Shippo does not echo label_file_type, so the format delivered is read from the URL.
+    local url = json_path("label_url")
+    outputs.labelFormat = ""
+    if type(url) == "string" then
+      local ext = string.match(url, "%.(%w+)%?") or string.match(url, "%.(%w+)$")
+      if ext then outputs.labelFormat = string.lower(ext) end
+    end
+    local rate = json_path("rate")
+    if type(rate) == "string" then
+      outputs.rateId = rate
+    elseif type(rate) == "table" then
+      outputs.rateId = tostring(rate.object_id or "")
+    else
+      outputs.rateId = ""
+    end
+    outputs.messageCount = #(json_path("messages") or {})
+    return outputs

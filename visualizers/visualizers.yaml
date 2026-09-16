@@ -19,3 +19,23 @@ visualizers:
     file: rates.html
     match:
       node: listShipmentRatesByCurrency
+
+  # The label itself: a PNG is drawn as the image, a PDF or ZPL gets a link, and whatever the
+  # carrier said comes with it.
+  - id: label
+    name: Label
+    file: label.html
+    match:
+      node: createTransaction
+
+  - id: instalabel
+    name: Label
+    file: label.html
+    match:
+      node: createTransactionInstant
+
+  - id: label-read
+    name: Label
+    file: label.html
+    match:
+      node: getTransaction

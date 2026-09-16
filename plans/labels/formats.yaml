@@ -1,0 +1,108 @@
+# The label comes in the format asked for, and the format is only visible in the URL: Shippo does
+# not echo label_file_type back on the transaction. Two labels, one PNG and one ZPL, each bought and
+# left to cleanup to refund.
+intent:
+  goal: zpl
+  description: A label's format is chosen on the request and readable only from its URL
+
+execution:
+  steps:
+    - id: carriers
+      node: listCarrierAccounts
+      description: The carrier accounts, to name USPS by its object id
+      values:
+        pageSize: 100
+      retry:
+        max: 3
+        on: [429]
+
+    - id: from
+      node: createAddress
+      dependsOn: [carriers]
+      values:
+        name: AAT Shippo
+        street1: 215 Clayton St.
+        city: San Francisco
+        state: CA
+        zip: "94117"
+        country: US
+        phone: "+15553419393"
+        email: aat-shippo@example.com
+
+    - id: to
+      node: createAddress
+      dependsOn: [from]
+      values:
+        name: AAT Recipient
+        street1: 350 Fifth Avenue
+        city: New York
+        state: NY
+        zip: "10118"
+        country: US
+        phone: "+15553419394"
+        email: aat-shippo@example.com
+
+    - id: parcel
+      node: createParcel
+      dependsOn: [to]
+      values:
+        length: "10"
+        width: "8"
+        height: "4"
+        distanceUnit: in
+        weight: "2"
+        massUnit: lb
+
+    - id: png
+      node: createTransactionInstant
+      dependsOn: [parcel]
+      description: A PNG label, which the web UI can render as an image
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        carrierAccountId:
+          from: carriers.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+        serviceLevelToken: usps_priority
+        labelFileType: PNG
+        async: false
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              test == true && status == "SUCCESS" && labelFormat == "png" &&
+              trackingNumber != ""
+
+    - id: zpl
+      node: createTransactionInstant
+      dependsOn: [png]
+      isGoal: true
+      description: The same shipment as ZPL, the format a label printer takes
+      values:
+        addressFrom: {from: from.addressId}
+        addressTo: {from: to.addressId}
+        parcels:
+          value: ["{{parcel.parcelId}}"]
+        carrierAccountId:
+          from: carriers.accounts
+          select:
+            strategy: match
+            field: carrierAccountId
+            filter: carrier == "usps"
+        serviceLevelToken: usps_priority
+        labelFileType: ZPLII
+        async: false
+      assertions:
+        mechanical:
+          - type: predicate
+            expr: >-
+              test == true && status == "SUCCESS" && labelFormat == "zpl" &&
+              trackingNumber != ""
+          # Two labels for the same shipment get their own tracking numbers.
+          - type: predicate
+            expr: '!(trackingNumber == "{{png.trackingNumber}}")'
