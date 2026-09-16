@@ -31,7 +31,7 @@
     background: #ffffff;
     padding: 8px;
     border-radius: 3px;
-    max-width: 340px;
+    max-width: 420px;
   }
   .sheet img { display: block; max-width: 100%; height: auto; }
   .facts { flex: 1 1 260px; min-width: 240px; }
@@ -86,12 +86,21 @@
     return m ? m[1].toLowerCase() : '';
   }
 
+  // Tell the host how tall the page is. The label is an image, so this runs again once it has
+  // loaded: before then the page is the height of an empty box, and the label would be cut off.
+  function postSize() {
+    parent.postMessage({ type: 'aat-visualizer-resize', height: document.documentElement.scrollHeight }, '*');
+  }
+
   // The host allows images over https, so a PNG label is shown as itself. A PDF or ZPL cannot be
   // drawn in an image, so it gets a link instead.
   function sheet(url, format) {
     if (!url) return null;
     if (format === 'png' || format === 'jpg' || format === 'jpeg' || format === 'gif') {
-      return el('div', { 'class': 'sheet' }, [el('img', { src: url, alt: 'Shipping label' })]);
+      var img = el('img', { src: url, alt: 'Shipping label' });
+      img.addEventListener('load', postSize);
+      img.addEventListener('error', postSize);
+      return el('div', { 'class': 'sheet' }, [img]);
     }
     return el('div', { 'class': 'fallback' }, [
       el('p', { 'class': 'muted', text: 'A ' + (format ? format.toUpperCase() : 'label') + ' file, which cannot be drawn here.' }),
@@ -162,9 +171,7 @@
       document.documentElement.style.setProperty(name, msg.theme[name]);
     });
     render(msg.body);
-    requestAnimationFrame(function () {
-      parent.postMessage({ type: 'aat-visualizer-resize', height: document.documentElement.scrollHeight }, '*');
-    });
+    requestAnimationFrame(postSize);
   });
 
   parent.postMessage({ type: 'aat-visualizer-ready' }, '*');

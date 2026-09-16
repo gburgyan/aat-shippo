@@ -17,3 +17,8 @@ env.secrets*.yaml
 # OS files
 .DS_Store
 Thumbs.db
+
+# Recording work: the GIFs are committed from docs/images, these are not
+demos/out/
+demos/.bin/
+demos/node_modules/

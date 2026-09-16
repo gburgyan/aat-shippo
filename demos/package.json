@@ -1,0 +1,9 @@
+{
+  "name": "aat-shippo-demos",
+  "private": true,
+  "type": "module",
+  "description": "Records the terminal GIFs and web UI screenshots in docs/images; run demos/run.sh",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
