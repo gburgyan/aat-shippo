@@ -105,3 +105,55 @@ outside its service area.
 - A carrier layer only composes with the lanes it serves, so the purchase matrix runs **per region**,
   as a layer group, rather than crossing every carrier with every lane. No `incompatible` primitive is
   needed: a layer group already picks at most one of its options.
+
+---
+
+## Tracking is a separate world
+
+Measured 2026-09-16. None of the grid above applies to tracking, because **test mode will not track
+any of those carriers at all**. A label bought in test mode is issued a real, well-formed carrier
+tracking number, and reading it back is refused:
+
+```text
+GET /tracks/usps/9334620845500001485285
+400  {"detail": "usps is not a valid test tracking carrier. Please use 'shippo'"}
+```
+
+Every real carrier answers the same sentence with its own name in it — probed on `usps`, `ups`,
+`dhl_express` and `fedex`. The only carrier test mode tracks is `shippo`, and the only numbers it
+accepts are six fixtures; anything else under `shippo` is refused with a different message, about
+the number rather than the carrier.
+
+| Tracking number | Status | History | The chain |
+|---|---|---:|---|
+| `SHIPPO_PRE_TRANSIT` | `PRE_TRANSIT` | 1 | PRE_TRANSIT |
+| `SHIPPO_UNKNOWN` | `UNKNOWN` | 1 | UNKNOWN |
+| `SHIPPO_TRANSIT` | `TRANSIT` | 2 | UNKNOWN → TRANSIT |
+| `SHIPPO_FAILURE` | `FAILURE` | 3 | UNKNOWN → TRANSIT → FAILURE |
+| `SHIPPO_DELIVERED` | `DELIVERED` | 4 | UNKNOWN → TRANSIT → FAILURE → DELIVERED |
+| `SHIPPO_RETURNED` | `RETURNED` | 5 | UNKNOWN → TRANSIT → FAILURE → DELIVERED → RETURNED |
+
+They are one cumulative chain rather than six independent states: each fixture's history is the
+previous one plus an entry, so the history length identifies the fixture. `PRE_TRANSIT` is the
+exception — it is not a prefix of the others, which start at `UNKNOWN`.
+
+Every fixture reports the same service level (`shippo_priority`), the same lane (San Francisco, CA →
+Chicago, IL), Shippo's own `metadata` of "Shippo test tracking", and no carrier messages. `eta` and
+`original_eta` are relative to the moment you ask and move on every call, so no plan asserts them.
+
+**`tracking_history` is not sorted by `status_date`.** On both fixtures with a `FAILURE` in the
+chain, the failure is dated after the delivery that follows it in the array:
+
+```text
+SHIPPO_DELIVERED                 SHIPPO_RETURNED
+2026-09-12T22:40:36Z  UNKNOWN    2026-09-12T17:11:39Z  UNKNOWN
+2026-09-14T02:40:36Z  TRANSIT    2026-09-13T21:11:39Z  TRANSIT
+2026-09-15T14:40:36Z  FAILURE    2026-09-15T09:11:39Z  FAILURE
+2026-09-15T02:40:36Z  DELIVERED  2026-09-14T21:11:39Z  DELIVERED
+                                 2026-09-15T17:11:39Z  RETURNED
+```
+
+The array order is the sequence and matches `tracking_status`; the dates do not. Read the order.
+
+This is what the six `track-` layers cross, and why that axis costs nothing: no shipment, no rate,
+no purchase, and an answer that is the same today as it was yesterday.

@@ -32,6 +32,15 @@ response:
     outputs.historyCount = #history
     outputs.historyStatuses = table.concat(statuses, ",") .. ""
     outputs.lastHistoryStatus = (#statuses > 0 and statuses[#statuses] or "") .. ""
+    -- Whether the timestamps agree with the array's order. They do not once a FAILURE is in the
+    -- chain: it is dated after the DELIVERED that comes after it.
+    local ordered, previous = true, nil
+    for _, h in ipairs(history) do
+      local when = tostring(h.status_date or "")
+      if previous ~= nil and when < previous then ordered = false end
+      previous = when
+    end
+    outputs.historyInDateOrder = ordered
     outputs.hasLocation = json_path("tracking_status.location") ~= nil
     local txn = json_path("transaction")
     outputs.transactionId = type(txn) == "string" and txn or ""

@@ -86,9 +86,24 @@ check "$root/_output/runs/$tracking_batch/batch.json" \
   '.result.outcome == "passed" and .result.skippedRuns == 7 and .result.passedRuns == 7' "tracking"
 
 step "Trimming, then into docs/images"
+# A stale GIF from an older tape would otherwise be copied forward forever; validate writes an
+# MP4 now, and its still is extracted from that.
+rm -f "$out/demo-validate.gif"
 for gif in "$out"/*.gif; do
-  gifsicle -O3 --lossy=60 --colors 128 "$gif" -o "$gif.opt" && mv "$gif.opt" "$gif"
+  gifsicle -O3 --lossy=60 --colors 64 "$gif" -o "$gif.opt" && mv "$gif.opt" "$gif"
 done
+
+# Budgets in KB. A README that takes a minute to load is a README nobody scrolls.
+budget() {
+  local file="$1" limit="$2" size
+  size=$(( $(wc -c <"$file") / 1024 ))
+  [ "$size" -le "$limit" ] || die "$(basename "$file") is ${size}KB, over its ${limit}KB budget"
+}
+budget "$out/demo-label.gif"    1000
+budget "$out/demo-matrix.gif"   3000
+budget "$out/demo-tracking.gif" 1500
+budget "$out/demo-validate.png"  500
+
 for asset in "$out"/demo-*.gif "$out"/demo-validate.png; do
   cp "$asset" "$images/$(basename "$asset")"
   printf '  %-24s %s\n' "$(basename "$asset")" "$(du -h "$asset" | cut -f1)"
@@ -99,9 +114,8 @@ aat run plan labels/formats --env test-ci --quiet >/dev/null
 formats_run=$(newest run)
 aat run plan rating/rate-shop --env test-ci --quiet >/dev/null
 rates_run=$(newest run)
-aat run plan tracking/fixtures --env test-ci --quiet \
-  --var trackFixture=SHIPPO_DELIVERED >/dev/null 2>&1 \
-  || aat run plan tracking/register --env test-ci --quiet >/dev/null
+# register reads the delivered fixture, whose four-entry history is the one worth drawing.
+aat run plan tracking/register --env test-ci --quiet >/dev/null
 track_run=$(newest run)
 
 step "Web UI on :$web_port"

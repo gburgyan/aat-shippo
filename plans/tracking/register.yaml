@@ -4,6 +4,9 @@
 #   - POST /tracks answers 200, not the 201 every other create in this API answers.
 #   - Registering is idempotent: the same number registered twice answers 200 again, with the same
 #     history, rather than a 409.
+#   - tracking_history is **not sorted by status_date**. On every fixture with a FAILURE in it, the
+#     failure is dated after the delivery that follows it in the array. The order of the array is
+#     the sequence; the timestamps are not.
 #
 # The registration and the plain read return the same Track shape, so the second step proves the
 # two agree rather than re-proving the shape.
@@ -64,5 +67,10 @@ execution:
           # through a failure is odd, and it is what the API says.
           - type: predicate
             expr: 'historyStatuses == "UNKNOWN,TRANSIT,FAILURE,DELIVERED"'
+          # And the timestamps do not agree with that order: the FAILURE is dated after the
+          # DELIVERED printed below it. The array's order is the sequence; the dates are not.
+          # Anything that renders this history sorted by date will show it ending at a failure.
+          - type: predicate
+            expr: historyInDateOrder == false
           - type: predicate
             expr: hasLocation == true

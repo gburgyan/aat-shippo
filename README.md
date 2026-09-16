@@ -271,6 +271,20 @@ Shippo's happy path walks through a failure on its way to the door, and a return
 something that happens *after* a delivery. Neither is wrong, exactly — but if you are writing a
 state machine against this API, that is the shape it has to accept.
 
+**And do not sort that history by date.** On every fixture with a `FAILURE` in it, the failure is
+*timestamped after* the delivery that comes after it in the array:
+
+```text
+2026-09-12T22:40:36Z  UNKNOWN
+2026-09-14T02:40:36Z  TRANSIT
+2026-09-15T14:40:36Z  FAILURE     <- later
+2026-09-15T02:40:36Z  DELIVERED   <- but earlier in the day
+```
+
+The array's order is the sequence; the timestamps are not. Anything that renders this history
+sorted by `status_date` will show a delivered parcel ending at a failure —
+[tracking/register](plans/tracking/register.yaml) pins it.
+
 Each of those runs draws its own history in the web UI:
 
 ![The tracking history as a timeline: status chips, the carrier's own wording, and where each event happened](docs/images/ui-tracking.png)

@@ -3,6 +3,9 @@
 # over in about ten seconds — including the dedup list, where the plan that pins its own tracking
 # number collapses all six layers into one run.
 #
+# --env test-ci is the command the README documents, and it is also what makes this watchable:
+# unpaced, fourteen fixture reads are over before you can follow them.
+#
 # Writes demos/out/demo-tracking.gif.
 
 Output demos/out/demo-tracking.gif
@@ -17,7 +20,7 @@ Set Width 1180
 Set Height 820
 Set Padding 20
 Set Framerate 24
-Set TypingSpeed 30ms
+Set TypingSpeed 12ms
 Set CursorBlink false
 
 Hide
@@ -27,7 +30,7 @@ Wait
 Show
 
 Sleep 500ms
-Type "aat run batch tracking --layer-group track-pre-transit,track-transit,track-delivered,track-returned,track-failure,track-unknown"
+Type "aat run batch tracking --env test-ci --layer-group track-pre-transit,track-transit,track-delivered,track-returned,track-failure,track-unknown"
 Sleep 400ms
 Enter
 Wait@120s

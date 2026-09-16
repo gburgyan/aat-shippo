@@ -1268,8 +1268,10 @@ nodes:
       `SHIPPO_*` numbers returns a fixed, deterministic history that never flakes and costs
       nothing, which is what the tracking layers cross. The six are a **cumulative chain**, not
       six independent states: UNKNOWN(1) → TRANSIT(2) → FAILURE(3) → DELIVERED(4) → RETURNED(5),
-      with PRE_TRANSIT its own single entry. `eta` and `original_eta` are relative to now and move
-      on every call, so nothing asserts them. Proven by plans/tracking/fixtures.yaml.
+      with PRE_TRANSIT its own single entry. **The array's order is the sequence and the timestamps
+      do not agree with it** — a FAILURE is dated after the DELIVERED that follows it — so read the
+      order, not the dates. `eta` and `original_eta` are relative to now and move on every call, so
+      nothing asserts them. Proven by plans/tracking/fixtures.yaml and plans/tracking/register.yaml.
     adapter: getTrack
     tags: [tracking]
     oas:
@@ -1306,6 +1308,11 @@ nodes:
       - name: lastHistoryStatus
         type: string
         description: The final history entry's status, which is what tracking_status reports now
+      - name: historyInDateOrder
+        type: boolean
+        description: >-
+          Whether status_date increases down the history. **It does not** on the fixtures with a
+          FAILURE in them: the array's order is the sequence, and the dates disagree with it
       - name: hasLocation
         type: boolean
         description: >-
