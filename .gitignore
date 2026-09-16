@@ -1,0 +1,19 @@
+# Run output and local state
+_output/
+state.json
+.aat-overrides.yaml
+
+# One-off probe plans that check the live API before a plan is written
+probes/
+
+# Credentials never belong in the repository
+setup-*.sh
+env.secrets*.yaml
+.env
+
+# Local tool settings
+.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
