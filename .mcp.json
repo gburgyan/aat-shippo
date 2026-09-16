@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "shippo-api": {"command": "aat", "args": ["mcp", "serve", "--persona", "api"]},
+    "shippo-test": {"command": "aat", "args": ["mcp", "serve", "--persona", "test"]}
+  }
+}

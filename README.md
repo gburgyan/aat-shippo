@@ -1,15 +1,18 @@
 # aat-shippo
 
 The [Shippo](https://goshippo.com) shipping API in test mode, as an [AAT](https://github.com/gburgyan/aat)
-project. A graph describes each operation, plans chain them, and every plan runs against Shippo's live
-test API. Everything this README says about Shippo came from those runs — where a run showed something
+project. AAT is a command-line tool that models an API as a graph and runs long, multi-step test plans
+against it: here a graph describes each operation, plans chain them, and every plan runs against
+Shippo's live test API. Everything this README says about Shippo came from those runs — where a run showed something
 no plan asserts yet, it says so.
 
 **Status:** carrier accounts, addresses, parcels, rating, labels, tracking, webhooks, and the
-account and checkout settings are done — 46 of Shippo's 70 operations, over 47 nodes, all run by 28
-plans that pass together in about two and a half minutes, plus two layer matrices: a lane crossed
-with a parcel, and Shippo's six deterministic tracking fixtures. Customs, batches, manifests,
-pickups and orders are [not covered yet](#not-covered-yet).
+account and checkout settings are done: 46 of Shippo's 70 operations, over 47 nodes, run by 28
+plans that pass together in about two and a half minutes, with 9 layers in two matrices: a lane
+crossed with a parcel, and Shippo's six deterministic tracking fixtures. Customs, batches,
+manifests, pickups and orders are [not covered yet](#not-covered-yet).
+
+[![nightly run](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml/badge.svg)](https://github.com/gburgyan/aat-shippo/actions/workflows/nightly.yml)
 
 ```text
 $ aat run plan labels/buy-and-refund
@@ -61,17 +64,13 @@ That is the label Shippo actually returned, drawn in the web UI from its `label_
 
 ---
 
-## What this is for
+## Three ways to read this project
 
 Three things at once, and they are the same files.
 
-**1. A test suite Shippo could run.** Every operation has a node and at least one plan that proves it
-against the live test API. It is what you would keep in CI if you owned this API, or if you depended
-on it.
-
-**2. A Rosetta stone for integrating with Shippo.** The hard part of any API integration is not the
+**1. A Rosetta stone for integrating with Shippo.** The hard part of any API integration is not the
 HTTP — it is knowing which calls come in which order, what each one really requires, and what the
-documentation does not tell you. This package is that knowledge in a form you can execute:
+documentation does not tell you. This project is that knowledge in a form you can execute:
 
 - `graph.yaml` says what every operation takes and returns, **and what a run proved about it**, and
   [`docs/api/`](docs/api/) is that generated as a page per operation, with a diagram of how they wire
@@ -83,9 +82,17 @@ documentation does not tell you. This package is that knowledge in a form you ca
 Point a coding assistant at it and it has the whole workflow, not a pile of endpoint reference. That
 is the difference between an API you can read about and an API you can ship against tomorrow.
 
-**3. A demonstration of AAT.** This whole project is 2,110 lines of graph and 1,443 lines of
+**2. A test suite Shippo could run.** Every operation has a node and at least one plan that proves it
+against the live test API. It is what you would keep in CI if you owned this API, or if you depended
+on it.
+
+**3. A demonstration of AAT.** This whole project is about 2,100 lines of graph and 1,450 lines of
 templates — against a 23,631-line OpenAPI spec. One file per operation, small enough to hold in your
 head or an agent's context, and strictly validated before a single request goes out.
+
+It is one of three such projects, with [aat-duffel](https://github.com/gburgyan/aat-duffel) and
+[aat-stripe](https://github.com/gburgyan/aat-stripe); [Real APIs](https://gburgyan.github.io/aat/examples/real-apis/)
+compares them.
 
 ---
 
@@ -93,7 +100,7 @@ head or an agent's context, and strictly validated before a single request goes 
 
 ### What you need
 
-- **AAT.** Install with Homebrew, a release archive, Docker, or `go install` — see
+- **AAT v0.2.0 or later.** Install it with Homebrew, a release archive, Docker, or `go install` — see
   [Install](https://gburgyan.github.io/aat/install/).
 - **A Shippo test token.** Sign up at [goshippo.com](https://goshippo.com), take the
   `shippo_test_…` token from **Settings → API**, and export it:
@@ -136,11 +143,11 @@ The loop closes before anything is sent:
 
 ## Nothing here can spend your money
 
-This package buys shipping labels. That is the point, and it is also the risk, so:
+This project buys shipping labels. That is the point, and it is also the risk, so:
 
 - **Every node that creates something fails a response whose `test` is false.** A live token stops a
   plan at its first object instead of buying a real label.
-- **Every object carries `metadata` starting `aat-shippo`,** so the guards can tell this package's
+- **Every object carries `metadata` starting `aat-shippo`,** so the guards can tell this project's
   objects from anything else on the account.
 - **Cleanup refunds where it cannot delete.** Almost nothing in Shippo can be deleted — addresses,
   parcels, shipments and orders are permanent — so every label node is paired with `createRefund`
@@ -150,8 +157,8 @@ This package buys shipping labels. That is the point, and it is also the risk, s
 - **Four guards run last in every batch**, named `zz-` so they sort there.
   [`no-live-labels`](plans/zz-guard/no-live-labels.yaml) fails if any label on the account was
   bought with a live token, and [`no-unrefunded-labels`](plans/zz-guard/no-unrefunded-labels.yaml)
-  fails if any label this package bought is still in `SUCCESS`, which means a cleanup did not run.
-  Both assert they found this package's labels at all, so neither can pass by finding nothing.
+  fails if any label this project bought is still in `SUCCESS`, which means a cleanup did not run.
+  Both assert they found this project's labels at all, so neither can pass by finding nothing.
   [`no-stray-webhooks`](plans/zz-guard/no-stray-webhooks.yaml) and
   [`no-stray-account-objects`](plans/zz-guard/no-stray-account-objects.yaml) do the opposite, and
   on purpose: their job **is** to find nothing, so they assert a count of zero and prove they read
@@ -166,11 +173,11 @@ This package buys shipping labels. That is the point, and it is also the risk, s
 `Webhook` carry **neither `metadata` nor `test`**. There is no field to tag and no field to refuse
 on, so those objects are named with an `aat-shippo` prefix instead — a webhook, which has no name
 either, is recognised by its URL — and the guards count by that. It is a weaker rail than the one
-the rest of the package uses, and worth saying rather than glossing.
+the rest of the project uses, and worth saying rather than glossing.
 
 Platform accounts are read and never created: Shippo's spec offers **no DELETE** for them, and a
 create is keyed to a real email address. On a test token the create answers `403` anyway, which is
-[what this package asserts](plans/account/platform-accounts.yaml).
+[what this project asserts](plans/account/platform-accounts.yaml).
 
 In a full `aat run batch`, four plans buy five labels between them and the account ends with none of
 them bought, and nothing else created anywhere in the run is still there.
@@ -240,7 +247,7 @@ immune and any plan that does not can be crossed with all of them.
 ### The same trick, for free
 
 The parcel matrix rates eight real shipments against live carriers, which takes about a minute and
-depends on what those carriers say that day. The other axis in this package costs nothing and
+depends on what those carriers say that day. The other axis in this project costs nothing and
 cannot flake: Shippo publishes six tracking numbers that always return the same history.
 
 ```bash
@@ -339,7 +346,7 @@ message asking for an apartment number — [addresses/validate](plans/addresses/
 ### Shippo does not tell you what format your label is
 
 `label_file_type` chooses the format, and the transaction **does not echo it back**. The only way to
-know what you got is the label URL's extension. This package exposes `labelFormat`, parsed from the
+know what you got is the label URL's extension. This project exposes `labelFormat`, parsed from the
 URL, rather than the type that was asked for — [labels/formats](plans/labels/formats.yaml).
 
 ### A refund does not settle, but the label reacts at once
@@ -369,7 +376,7 @@ though the response pages.
 ### Shippo's spec says nothing is nullable, and the API sends `null` constantly
 
 `next` and `previous` on every list, `is_residential`, `latitude` and `longitude` on an address, and
-`template` on a parcel. Under strict OpenAPI validation every list read in this package would fail for
+`template` on a parcel. Under strict OpenAPI validation every list read in this project would fail for
 a reason that is the spec's, not the caller's:
 
 ```text
@@ -406,7 +413,7 @@ labels you buy** — which is why the tracking plans start from a fixture and ne
 
 Shippo asks for an event and a URL and nothing else. There is no verification handshake, no
 challenge, and no ping, so the whole create → read → list → update → delete lifecycle is testable
-against a URL that never answers — which is exactly how this package tests it. Delivery, payloads,
+against a URL that never answers — which is exactly how this project tests it. Delivery, payloads,
 retries and signatures are not testable without a receiver, and nothing here claims them.
 
 There is also **no signing secret**. Most webhook APIs hand you one on create and you spend a
@@ -415,7 +422,7 @@ Three smaller things the spec does not mention — [webhooks/lifecycle](plans/we
 
 - `event: all` is stored and **read back as `*`**, which the spec's own enum does not list.
 - Updating a webhook **does not move its `object_updated`**, so the object carries no trace of the change.
-- The listing declares no `page` or `results` parameters and pages anyway. This package sends
+- The listing declares no `page` or `results` parameters and pages anyway. This project sends
   neither and asserts `next` is absent instead: sending what the spec does not declare would be
   our bug rather than Shippo's.
 - Deleting a webhook and then reading it gives a `404` **the spec does not declare** — runtime
@@ -486,7 +493,7 @@ declares.
 15 carrier accounts come active on a test token, and **10 of them will actually quote**. FedEx is
 restricted on the account, Canada Post has a credential mismatch, LSO is Texas-only, and CouriersPlease
 answers nothing even once you supply the company name it asks for — which makes Australia a lane this
-package cannot use. The full grid, with the reason each silent carrier gives, is in
+project cannot use. The full grid, with the reason each silent carrier gives, is in
 [docs/carrier-lane-coverage.md](docs/carrier-lane-coverage.md).
 
 Test-mode rate limits, per minute: **50** POSTs, **400** single GETs, **10** list GETs, **10** batch
@@ -513,7 +520,7 @@ account/       parcel templates, service groups, rates at checkout, platform acc
                and the one carrier write that is safe to make
 matrix/        lanes with nothing said about the parcel, for the layer groups to cross
 zz-guard/      run last: no live labels, nothing left unrefunded, and nothing this
-               package created still sitting on the account
+               project created still sitting on the account
 drift/         outside plans/, so a batch never runs it: what the spec gets wrong
 ```
 
@@ -593,9 +600,9 @@ Every operation below has a node and at least one passing plan.
 
 ---
 
-## What we sent upstream
+## How this was built
 
-Building this package found five gaps in AAT itself. Every one is fixed and merged, each with tests
+Building this project found five gaps in AAT itself. Every one is fixed and merged, each with tests
 that fail without it:
 
 | PR | What it was |
@@ -603,7 +610,7 @@ that fail without it:
 | [#28](https://github.com/gburgyan/aat/pull/28) | An `apikey` auth can write its own scheme — `Authorization: ShippoToken <key>` — without the scheme becoming part of the secret |
 | [#29](https://github.com/gburgyan/aat/pull/29) | A block key may end in `[]`. **`aat generate`'s own output failed `aat validate --strict`** for any spec with an array query parameter |
 | [#30](https://github.com/gburgyan/aat/pull/30) | The static OpenAPI check reads a `oneOf`/`anyOf` request body. The six bodies the generator declines to write were exactly the six that then warned |
-| [#31](https://github.com/gburgyan/aat/pull/31) | An input can be named for the package rather than the JSON body — form, query and path inputs already could |
+| [#31](https://github.com/gburgyan/aat/pull/31) | An input can be named for the project rather than the JSON body — form, query and path inputs already could |
 | [#32](https://github.com/gburgyan/aat/pull/32) | An input can name a property nested inside the request body, which a template routinely flattens into one input per leaf |
 
 Three of the five were only findable this way. `aat generate` scaffolds a project from a spec, and on
@@ -626,6 +633,21 @@ API answers at the version the spec describes, so a mismatch is a real differenc
 skew.
 
 ---
+
+## Point your coding assistant at it
+
+The same files are an MCP server. [`.mcp.json`](.mcp.json) registers two, and Claude Code loads them
+when it opens this directory; other clients take the same commands:
+
+- **`shippo-api`** (`aat mcp serve --persona api`): read-only tools that hand an assistant each
+  operation's exact request, the order calls go in, what each needs from the calls before it, the
+  domain's rules, the spec's schemas, and sample responses from real runs. Ask it for a client in
+  your language and it has the whole workflow to work from, not a pile of endpoint reference.
+- **`shippo-test`** (`--persona test`): the tools to write, validate, run, and debug plans against
+  your own test account, with `SHIPPO_API_TOKEN` in the environment.
+
+[MCP server](https://gburgyan.github.io/aat/mcp-server/) covers the tools, other clients, and the
+HTTP transport.
 
 ## Shippo already has an MCP server. This is not that.
 
@@ -653,8 +675,8 @@ Four operations are deliberately not covered, and will stay that way:
 - **`InitiateOauth2Signin`** — a browser redirect with no token exchange in the spec and no headless
   completion. It belongs in a negative suite asserting the refusal, not here.
 
-Also not here yet: a lane layer axis (it needs the from and to addresses as separate nodes), nightly
-CI, and the packaged MCP kit.
+Also not here yet: a lane layer axis (it needs the from and to addresses as separate nodes). Nightly
+CI has [its workflow](.github/workflows/nightly.yml) and waits on a token in the repository's secrets.
 
 ---
 
@@ -678,3 +700,7 @@ demos/                      regenerates those images: demos/run.sh
 ```
 
 Run `demos/run.sh` with a test token to rebuild every recording and screenshot above.
+
+## License
+
+Apache 2.0; see [LICENSE](LICENSE).

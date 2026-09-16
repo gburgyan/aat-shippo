@@ -3,7 +3,7 @@
 # test API: three terminal GIFs, one terminal still, and five web UI screenshots.
 #
 # Usage:
-#   source ~/dev/aat/setup-shippo.sh && SHIPPO_API_TOKEN=$SHIPPO_TOKEN demos/run.sh
+#   SHIPPO_API_TOKEN=shippo_test_... demos/run.sh
 #
 # Needs: aat on PATH, the pinned VHS (v0.11.0 — v0.12.0 writes no GIF), ffmpeg,
 # node and npm with Playwright's Chromium, gifsicle, jq, and the JetBrains Mono

@@ -1,0 +1,37 @@
+name: nightly run
+
+# Runs the whole project against Shippo's live test API once a day, so the numbers in the README are
+# reproducible from this repository. Skips when the repository has no token. Nothing is uploaded: raw
+# responses in _output/ can hold account details, so the log is the record.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    env:
+      AAT_VERSION: 0.2.0
+    steps:
+      - id: token
+        env:
+          TOKEN: ${{ secrets.SHIPPO_API_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "present=false" >> "$GITHUB_OUTPUT"; echo "SHIPPO_API_TOKEN is not set; nothing to run"; fi
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.present == 'true'
+      - name: Install aat
+        if: steps.token.outputs.present == 'true'
+        run: |
+          curl -fsSL "https://github.com/gburgyan/aat/releases/download/v${AAT_VERSION}/aat_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin aat
+          aat --version
+      - name: Validate
+        if: steps.token.outputs.present == 'true'
+        run: aat validate --strict
+      - name: Run every plan
+        if: steps.token.outputs.present == 'true'
+        env:
+          SHIPPO_API_TOKEN: ${{ secrets.SHIPPO_API_TOKEN }}
+        run: aat run batch --env test-ci
