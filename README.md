@@ -71,7 +71,8 @@ on it.
 HTTP — it is knowing which calls come in which order, what each one really requires, and what the
 documentation does not tell you. This package is that knowledge in a form you can execute:
 
-- `graph.yaml` says what every operation takes and returns, **and what a run proved about it**
+- `graph.yaml` says what every operation takes and returns, **and what a run proved about it**, and
+  [`docs/api/`](docs/api/) is that generated as a page per operation, with a diagram of how they wire
 - `templates/` is one small file per operation with the exact request and the paths its outputs come from
 - `plans/` is the call order for real tasks — rate and buy, buy in one call, refund, validate an address
 - `domain.yaml` is 18 concepts, each naming the plans that prove it
@@ -452,6 +453,7 @@ layers/                     the parcel axis: three files, each setting one node'
 plans/                      what runs, by family
 drift/                      outside plans/, so a batch never runs it
 visualizers/                the rates table and the rendered label
+docs/api/                   generated from the graph: a page per node, and a diagram of the wiring
 docs/carrier-lane-coverage.md   which carriers answer on which lanes, and why the others don't
 docs/images/                what this README embeds
 demos/                      regenerates those images: demos/run.sh
