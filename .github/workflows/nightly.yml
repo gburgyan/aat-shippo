@@ -34,7 +34,43 @@ jobs:
         if: steps.token.outputs.present == 'true'
         env:
           SHIPPO_API_TOKEN: ${{ secrets.SHIPPO_API_TOKEN }}
-        run: aat run batch --env test-ci
+        # pipefail, or tee's exit status would hide a failed batch.
+        run: |
+          set -o pipefail
+          aat run batch --env test-ci 2>&1 | tee /tmp/batch.log
+
+      # What happened, on the run's own page. Without this the only record of a
+      # failure a knownIssue kept out of the build is inside the artifact, which
+      # means downloading and unzipping before you can see that a green run was
+      # green on a promise. The marks come from AAT's own output, so there is no
+      # second format to keep in step with it.
+      - name: Put the run in the job summary
+        if: always() && steps.token.outputs.present == 'true'
+        run: |
+          [ -s /tmp/batch.log ] || exit 0
+          result=$(grep -E '^Batch: ' /tmp/batch.log | tail -1)
+          {
+            echo "## ${result:-The batch did not finish}"
+            echo
+            if grep -q 'known issue' /tmp/batch.log; then
+              echo "### Known issues ($(grep -c 'known issue' /tmp/batch.log))"
+              echo
+              echo "Steps that failed without failing the build, and the date each stops being excused."
+              echo "After that date the failure counts again and this run goes red."
+              echo
+              echo '```'
+              grep 'known issue' /tmp/batch.log | sed 's/^ *//'
+              echo '```'
+              echo
+            fi
+            echo "<details><summary>Full run output</summary>"
+            echo
+            echo '```'
+            cat /tmp/batch.log
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The project's own name, so the file says which API it came from.
       - name: Pack each batch as a .aab
