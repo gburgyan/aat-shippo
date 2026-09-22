@@ -54,6 +54,11 @@ mode**, read it back, refunded it, and watched the label's own status follow. Ev
 it read — as in "the label is in test mode, tagged as ours, carries a tracking number, and the carrier
 reported nothing". Cleanup would have refunded the label anyway; it found the plan had already done it.
 
+That transcript predates 18 September 2026. Since then a defect in Shippo's **test** environment
+answers the refund `ERROR` rather than `PENDING`, so the last three steps print `known issue until
+2026-10-06` and the run still passes — [A refund does not
+settle](#a-refund-does-not-settle-but-the-label-reacts-at-once) has the detail.
+
 The `OAS: n warning(s)` on each step is every place the response disagreed with Shippo's own published
 spec. They are [the spec's bug, not the API's](#shippos-spec-says-nothing-is-nullable-and-the-api-sends-null-constantly),
 which is why they are reported rather than fatal — and why they are counted rather than ignored.
@@ -186,7 +191,8 @@ them bought, and nothing else created anywhere in the run is still there.
 
 That is the run at the top of this page as it actually happens — including the last three steps,
 where the refund is filed, the refund itself sits at `PENDING`, and the label flips to
-`REFUNDPENDING` straight away. The cleanup line at the end reports itself *released*: the plan
+`REFUNDPENDING` straight away. It was recorded before the test-environment defect described below,
+so those last three steps read differently today. The cleanup line at the end reports itself *released*: the plan
 refunded the label itself, so the pairing found nothing left to undo.
 
 ---
@@ -352,9 +358,29 @@ URL, rather than the type that was asked for — [labels/formats](plans/labels/f
 ### A refund does not settle, but the label reacts at once
 
 The refund runs `QUEUED → PENDING → SUCCESS | ERROR` and stays `PENDING` for a long time — at least 90
-seconds in our measurements, which is what a carrier taking days to accept a refund looks like through
-an API. The **label's** own status becomes `REFUNDPENDING` immediately, so that is what to wait on —
-[labels/buy-and-refund](plans/labels/buy-and-refund.yaml).
+seconds in runs up to 17 September 2026, which is what a carrier taking days to accept a refund looks
+like through an API. The **label's** own status becomes `REFUNDPENDING` immediately, so that is what to
+wait on — [labels/buy-and-refund](plans/labels/buy-and-refund.yaml).
+
+**Test mode has not done this since 18 September 2026.** `POST /refunds` answers `201` with
+`status: ERROR` at once, and the label goes to `REFUNDREJECTED` rather than `REFUNDPENDING`. Shippo have
+confirmed it as a defect in their test environment; live refunds are unaffected, and their own
+documentation still says [a test-mode refund always
+succeeds](https://docs.goshippo.com/guides/testing) and defines `ERROR` as ["the shipment was found to
+be used"](https://docs.goshippo.com/billing-and-invoices/refunding-labels) — which a label created
+seconds earlier and never handed to a carrier cannot be.
+
+So the assertions here are unchanged: they encode what Shippo publish, and they still fail. The three
+blocked steps carry a
+[`knownIssue`](https://gburgyan.github.io/aat/plans/#known-issues-a-failure-with-a-deadline) that
+expires on **6 October 2026**, which keeps the nightly green on a fact somebody wrote down and turns it
+red again if the defect outlives the date. The seven steps that buy the label carry no entry, so a real
+regression there still fails the build. [What a nightly run
+caught](https://gburgyan.github.io/aat/examples/nightly-catch/) is the diagnosis, start to finish.
+
+One thing the goal step pays for: with the refund rejected, `repeat.until` waits out all fifteen of its
+reads (about 16 seconds) before the entry forgives it, because the label never reaches
+`REFUNDPENDING`.
 
 ### Rating is documented as asynchronous and behaves synchronously
 
