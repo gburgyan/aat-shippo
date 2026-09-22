@@ -12,7 +12,7 @@ jobs:
   batch:
     runs-on: ubuntu-latest
     env:
-      AAT_VERSION: 0.2.0
+      AAT_VERSION: 0.3.1
     steps:
       - id: token
         env:

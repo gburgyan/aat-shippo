@@ -136,6 +136,14 @@ execution:
             expr: >-
               transactionId == "{{label.transactionId}}" && test == true &&
               status in ["QUEUED", "PENDING", "SUCCESS"]
+      knownIssue:
+        until: 2026-10-06
+        reason: >-
+          Shippo test-mode defect, confirmed by Shippo: POST /refunds answers 201
+          with status ERROR where it answered PENDING before 2026-09-18. Live
+          refunds are unaffected. Their documentation says test-mode refunds
+          always succeed, so the assertion stays as written.
+        url: https://gburgyan.github.io/aat/examples/nightly-catch/
 
     - id: pending
       node: getRefund
@@ -155,6 +163,14 @@ execution:
               refundId == "{{refund.refundId}}" && test == true &&
               transactionId == "{{label.transactionId}}" &&
               status in ["QUEUED", "PENDING", "SUCCESS"]
+      knownIssue:
+        until: 2026-10-06
+        reason: >-
+          Shippo test-mode defect, confirmed by Shippo: POST /refunds answers 201
+          with status ERROR where it answered PENDING before 2026-09-18. Live
+          refunds are unaffected. Their documentation says test-mode refunds
+          always succeed, so the assertion stays as written.
+        url: https://gburgyan.github.io/aat/examples/nightly-catch/
 
     - id: refunded
       node: getTransaction
@@ -174,6 +190,14 @@ execution:
             expr: >-
               transactionId == "{{label.transactionId}}" && test == true &&
               status in ["REFUNDPENDING", "REFUNDED"]
+      knownIssue:
+        until: 2026-10-06
+        reason: >-
+          Downstream of the refund defect above: with the refund rejected, the
+          label goes to REFUNDREJECTED instead of REFUNDPENDING, so repeat.until
+          exhausts its 15 reads first. The wait is the cost of leaving the
+          assertion honest while Shippo fix test mode.
+        url: https://gburgyan.github.io/aat/examples/nightly-catch/
 
     - id: refundListed
       node: listRefunds
