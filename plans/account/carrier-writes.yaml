@@ -32,8 +32,10 @@ execution:
         mechanical:
           - type: status
             expect: 200
+          # Nothing left switched off by an earlier run. How many carriers there are is Shippo's
+          # business; the step below fails on its own if couriersplease is not among them.
           - type: predicate
-            expr: count == 15 && activeCount == 15
+            expr: count > 0 && activeCount == count
 
     - id: before
       node: getCarrierAccount

@@ -68,11 +68,12 @@ concepts:
 
   carrierAccounts:
     description: >-
-      A test token comes with 15 active carrier accounts, every one `is_shippo_account: true`, so no
-      carrier credentials are needed to rate or buy. `service_levels=true` on the **listing** is the
-      only way to see an account's service levels: reading one account on its own leaves
-      `service_levels` out of the body entirely. Ten of the fifteen answer a rate request; docs/carrier-lane-coverage.md
-      records which, and the reason each of the others gives. Proven by plans/carriers/accounts.yaml.
+      A test token comes with its carrier accounts already active, every one `is_shippo_account:
+      true`, so no carrier credentials are needed to rate or buy. How many, and which, is Shippo's
+      to change: never assert the count. `service_levels=true` on the **listing** is the only way to
+      see an account's service levels: reading one account on its own leaves `service_levels` out of
+      the body entirely. Not all of them answer a rate request; docs/carrier-lane-coverage.md records
+      which do, and the reason each of the others gives. Proven by plans/carriers/accounts.yaml.
     applies_to: [carrierAccountId, carrier, serviceLevels]
 
   carrierParcelTemplates:

@@ -114,7 +114,7 @@ compares them.
   export SHIPPO_API_TOKEN=shippo_test_...
   ```
 
-  A new account comes with 15 carrier accounts already active, so there is nothing else to set up.
+  A new account comes with its carrier accounts already active, so there is nothing else to set up.
 
 ### Run it
 
@@ -512,10 +512,12 @@ declares.
 
 ### The carrier grid
 
-15 carrier accounts come active on a test token, and **10 of them will actually quote**. FedEx is
-restricted on the account, Canada Post has a credential mismatch, LSO is Texas-only, and CouriersPlease
-answers nothing even once you supply the company name it asks for — which makes Australia a lane this
-project cannot use. The full grid, with the reason each silent carrier gives, is in
+A test token comes with its carrier accounts already active, and **10 of them will actually quote**.
+FedEx is restricted on the account, Canada Post has a credential mismatch, and CouriersPlease answers
+nothing even once you supply the company name it asks for — which makes Australia a lane this project
+cannot use. Which accounts come with a token is Shippo's to change: in November 2026 the LSO account,
+Texas-only and never quoting here, disappeared without notice, so no plan counts them. The full grid,
+with the reason each silent carrier gives, is in
 [docs/carrier-lane-coverage.md](docs/carrier-lane-coverage.md).
 
 Test-mode rate limits, per minute: **50** POSTs, **400** single GETs, **10** list GETs, **10** batch

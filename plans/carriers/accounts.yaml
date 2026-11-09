@@ -1,9 +1,14 @@
-# The carrier accounts a test token can rate with: fifteen of them, every one active, in test mode,
-# and provided by Shippo, so nothing here needs carrier credentials. Then one account read on its
-# own, with its service levels.
+# The carrier accounts a test token can rate with: every one active, in test mode, and provided by
+# Shippo, so nothing here needs carrier credentials. Then one account read on its own, with its
+# service levels.
+#
+# How many come with a token, and which, is Shippo's to change, and nothing here pins either. The
+# token had fifteen until the LSO account disappeared between the nightly runs of 4 and 5 November
+# 2026: no notice, and its object id answers 404. What a caller can rely on is the shape of the
+# list, not its length. The one carrier this plan needs is USPS, and the read below fails without it.
 intent:
   goal: usps
-  description: A test token comes with fifteen active Shippo-provided carrier accounts
+  description: Every carrier account a test token comes with is active, Shippo-provided, and in test mode
 
 execution:
   steps:
@@ -19,9 +24,9 @@ execution:
             expect: 200
           - type: predicate
             expr: >-
-              count == 15 && activeCount == 15 && shippoAccountCount == 15 && liveCount == 0 &&
-              serviceLevelCount > 100 &&
-              carriers == "canada_post,chronopost,colissimo,correos,couriersplease,deutsche_post,dhl_express,dpd_de,dpd_uk,fedex,hermes_uk,lso,ups,ups,usps"
+              count > 0 && activeCount == count && shippoAccountCount == count && liveCount == 0 &&
+              serviceLevelCount > 0
+          # One page holds them all, so the counts above cover every account on the token.
           - type: fieldAbsent
             path: nextPage
 

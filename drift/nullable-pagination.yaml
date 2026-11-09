@@ -28,8 +28,9 @@ execution:
         mechanical:
           - type: status
             expect: 200
+          # A page with something on it, so it has ends to look at. The number is Shippo's.
           - type: predicate
-            expr: count == 15
+            expr: count > 0
           # No next page: the `next` the API sent was null, so nothing was parsed out of it.
           - type: fieldAbsent
             path: nextPage

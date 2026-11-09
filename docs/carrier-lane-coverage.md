@@ -17,6 +17,12 @@ The test token has **15 active carrier accounts**, every one `is_shippo_account:
 **Ten of them can be rated.** The other five are listed and active but answer nothing — see
 [Carriers that never answer](#carriers-that-never-answer).
 
+> **Since 2026-11-05** the `lso` account is gone. It dropped out of the listing between the nightly
+> runs of 4 and 5 November, and its object id now answers 404. Shippo gave no notice. The other
+> fourteen are the same objects as before, and because `lso` never answered a lane, nothing below
+> changes. Which accounts a token comes with is Shippo's to change, so the plans assert what each
+> account is, not how many there are.
+
 ## The grid
 
 A 10 × 8 × 4 in, 2 lb parcel, unless the row says otherwise.

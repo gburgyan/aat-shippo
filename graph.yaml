@@ -17,10 +17,11 @@ nodes:
   # --- Carrier accounts -------------------------------------------------------------------
   listCarrierAccounts:
     description: >-
-      Page the carrier accounts the token can rate with (GET /carrier_accounts, 200). A clean test
-      account has 15, every one active, `test: true`, and `is_shippo_account: true`, so no carrier
-      credentials are needed to rate or buy. Ten of them actually answer a rate request; see
-      docs/carrier-lane-coverage.md for which, and why the other five do not. `service_levels: true`
+      Page the carrier accounts the token can rate with (GET /carrier_accounts, 200). On a test
+      token every one is active, `test: true`, and `is_shippo_account: true`, so no carrier
+      credentials are needed to rate or buy. How many there are, and which, is Shippo's to change.
+      Not all of them answer a rate request; see docs/carrier-lane-coverage.md for which do, and
+      why the others do not. `service_levels: true`
       adds each account's service levels, which is the only way to see them. Proven by
       plans/carriers/accounts.yaml.
     adapter: listCarrierAccounts
